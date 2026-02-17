@@ -19,7 +19,7 @@ const GeminiAssistant: React.FC<GeminiAssistantProps> = ({ article }) => {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const fullPrompt = `
-        Context: You are an expert analyst for a premium Rwandan publication called Inkwell.
+        Context: You are an expert analyst for a premium publishing platform called usethinkup.
         Article Title: ${article.title}
         Article Content: ${article.content.replace(/<[^>]*>?/gm, '')}
         
@@ -64,7 +64,7 @@ const GeminiAssistant: React.FC<GeminiAssistantProps> = ({ article }) => {
               <div className="w-6 h-6 bg-white/20 rounded flex items-center justify-center">
                 <span className="text-[10px] font-bold">AI</span>
               </div>
-              <span className="font-bold text-sm tracking-tight">Inkwell Assistant</span>
+              <span className="font-bold text-sm tracking-tight">usethinkup Assistant</span>
             </div>
             <button onClick={() => setIsOpen(false)} className="text-white/60 hover:text-white">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>

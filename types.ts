@@ -19,24 +19,24 @@ export interface User {
   email: string;
   role: UserRole;
   tier: SubscriptionTier;
-  articlesViewedThisMonth: string[]; // List of article IDs
+  avatar?: string;
+  bio?: string;
+  following: string[]; // User IDs
+  bookmarks: string[]; // Article IDs
+  followersCount: number;
+  articlesViewedThisMonth: string[];
 }
 
 export type Category = 'Politics' | 'Economy' | 'Culture' | 'Technology' | 'Science' | 'Opinion' | 'General';
 
-export interface Article {
+export interface Response {
   id: string;
-  title: string;
-  slug: string;
-  excerpt: string;
-  content: string; // HTML or Markdown
-  authorId: string;
-  authorName: string;
-  publishDate: string;
-  status: 'DRAFT' | 'PUBLISHED' | 'SCHEDULED';
-  featuredImage: string;
-  readingTime: number;
-  category: Category;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  text: string;
+  createdAt: string;
+  claps: number;
 }
 
 export interface Highlight {
@@ -44,15 +44,30 @@ export interface Highlight {
   articleId: string;
   userId: string;
   userName: string;
-  text: string;
-  range: {
-    startContainerIndex: number;
-    startOffset: number;
-    endContainerIndex: number;
-    endOffset: number;
-  };
+  userAvatar?: string;
+  text: string; // The selected text
   comment: string;
   createdAt: string;
+}
+
+export interface Article {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  content: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string;
+  publishDate: string;
+  status: 'DRAFT' | 'PUBLISHED' | 'SCHEDULED';
+  featuredImage: string;
+  readingTime: number;
+  category: Category;
+  claps: number;
+  responses: Response[];
+  highlights: Highlight[];
+  tags: string[];
 }
 
 export interface Stats {

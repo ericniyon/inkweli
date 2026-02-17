@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Inkwell | Premium Publishing</title>
+    <title>usethinkup | Premium Publishing</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -74,6 +74,49 @@
       .delay-300 { animation-delay: 300ms; }
       .delay-400 { animation-delay: 400ms; }
       .delay-500 { animation-delay: 500ms; }
+
+      /* Paragraph Commenting Styles */
+      .paragraph-target {
+        position: relative;
+      }
+      
+      .p-comment-trigger {
+        position: absolute;
+        right: -40px;
+        top: 0;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 50%;
+        color: #94a3b8;
+        cursor: pointer;
+        opacity: 0;
+        transition: all 0.2s ease;
+        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        z-index: 10;
+      }
+
+      @media (max-width: 1024px) {
+        .p-comment-trigger {
+          right: 0px;
+          background: rgba(255,255,255,0.9);
+        }
+      }
+
+      .paragraph-target:hover .p-comment-trigger {
+        opacity: 1;
+        transform: translateX(4px);
+      }
+
+      .p-comment-trigger:hover {
+        color: #4f46e5;
+        border-color: #4f46e5;
+        transform: translateX(4px) scale(1.1) !important;
+      }
     </style>
   <script type="importmap">
 {
