@@ -1,16 +1,16 @@
 {
-  "/api/auth/login/route": "app/api/auth/login/route.js",
+  "/api/site-settings/route": "app/api/site-settings/route.js",
   "/api/articles/route": "app/api/articles/route.js",
   "/api/writers/route": "app/api/writers/route.js",
   "/api/users/route": "app/api/users/route.js",
-  "/api/site-settings/route": "app/api/site-settings/route.js",
-  "/api/articles/[id]/route": "app/api/articles/[id]/route.js",
+  "/api/auth/login/route": "app/api/auth/login/route.js",
   "/page": "app/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/detail/[id]/page": "app/detail/[id]/page.js",
+  "/admin/articles/page": "app/admin/articles/page.js",
   "/(marketing)/login/page": "app/(marketing)/login/page.js",
   "/admin/page": "app/admin/page.js",
   "/admin/dashboard/page": "app/admin/dashboard/page.js",
-  "/admin/articles/page": "app/admin/articles/page.js",
+  "/admin/subscribers/page": "app/admin/subscribers/page.js",
+  "/admin/writers/page": "app/admin/writers/page.js",
+  "/admin/site-layout/page": "app/admin/site-layout/page.js",
   "/admin/editor/page": "app/admin/editor/page.js"
 }

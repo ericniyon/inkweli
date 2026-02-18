@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Article, Highlight, User, Response, SubscriptionTier } from '../types';
 import { PLACEHOLDER_IMAGE } from '../constants';
+import OptimizedImage from './OptimizedImage';
 import GeminiAssistant from './GeminiAssistant';
 import ResponsesDrawer from './ResponsesDrawer';
 import HighlightDrawer from './HighlightDrawer';
@@ -412,7 +413,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
           <div className="flex items-center justify-between py-6 border-y border-slate-100 mb-12">
              <div className="flex items-center gap-4">
                 <button onClick={() => onAuthorClick(article.authorId)} className="w-12 h-12 rounded-full overflow-hidden border border-slate-100 transition-transform hover:scale-105 active:scale-95">
-                   <img src={article.authorAvatar || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt="" />
+                   <OptimizedImage src={article.authorAvatar || PLACEHOLDER_IMAGE} alt={article.authorName} width={48} height={48} className="w-full h-full object-cover" />
                 </button>
                 <div className="text-left">
                    <div className="flex items-center gap-3">
@@ -453,8 +454,14 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
           </div>
         </header>
 
-        <div className="mb-12 -mx-4 md:-mx-6 lg:-mx-12 rounded-xl overflow-hidden shadow-2xl bg-slate-100">
-          <img src={article.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover max-h-[400px] md:max-h-[500px]" alt="" />
+        <div className="mb-12 -mx-4 md:-mx-6 lg:-mx-12 rounded-xl overflow-hidden shadow-2xl bg-slate-100 relative h-[400px] md:h-[500px]">
+          <OptimizedImage
+            src={article.featuredImage || PLACEHOLDER_IMAGE}
+            alt=""
+            fill
+            sizes="(max-width: 768px) 100vw, 1200px"
+            className="object-cover"
+          />
         </div>
 
         <div className="relative">
@@ -592,8 +599,8 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                  {moreFromAuthor.map(art => (
                    <div key={art.id} className="group cursor-pointer" onClick={() => onArticleClick(art)}>
-                      <div className="aspect-video rounded-2xl overflow-hidden mb-4 border border-slate-100 bg-slate-200 shadow-sm">
-                        <img src={art.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
+                      <div className="aspect-video rounded-2xl overflow-hidden mb-4 border border-slate-100 bg-slate-200 shadow-sm relative">
+                        <OptimizedImage src={art.featuredImage || PLACEHOLDER_IMAGE} alt={art.title} fill sizes="(max-width: 768px) 100vw, 50vw" className="object-cover group-hover:scale-105 transition-transform duration-500" />
                       </div>
                       <h3 className="text-lg font-black text-slate-900 leading-tight mb-2 Charter group-hover:text-indigo-600 transition-colors line-clamp-2">{art.title}</h3>
                       <div className="flex items-center gap-3 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
@@ -617,12 +624,12 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
               <div className="space-y-8">
                  {moreFromCategory.map(art => (
                    <div key={art.id} className="flex gap-6 group cursor-pointer" onClick={() => onArticleClick(art)}>
-                      <div className="w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 border border-slate-100 bg-slate-200">
-                         <img src={art.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt="" />
+                      <div className="w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 border border-slate-100 bg-slate-200 relative">
+                         <OptimizedImage src={art.featuredImage || PLACEHOLDER_IMAGE} alt={art.title} fill sizes="96px" className="object-cover" />
                       </div>
                       <div className="flex-grow py-1">
                          <div className="flex items-center gap-2 mb-2">
-                           <img src={art.authorAvatar || PLACEHOLDER_IMAGE} className="w-4 h-4 rounded-full" alt="" />
+                           <OptimizedImage src={art.authorAvatar || PLACEHOLDER_IMAGE} alt={art.authorName} width={16} height={16} className="w-4 h-4 rounded-full object-cover" />
                            <span className="text-[10px] font-bold text-slate-900">{art.authorName}</span>
                          </div>
                          <h3 className="text-lg font-black text-slate-900 leading-tight Charter group-hover:text-indigo-600 transition-colors line-clamp-2">{art.title}</h3>
@@ -692,7 +699,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
                   {activeHighlights.map((h) => (
                     <div key={h.id} className="flex gap-4">
                       <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden ring-2 ring-slate-100 flex-shrink-0">
-                        <img src={h.userAvatar || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt="" />
+                        <OptimizedImage src={h.userAvatar || PLACEHOLDER_IMAGE} alt={h.userName} width={40} height={40} className="w-full h-full object-cover" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-slate-900 leading-none">{h.userName}</p>
