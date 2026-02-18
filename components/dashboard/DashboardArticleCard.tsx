@@ -3,6 +3,7 @@
 import React from "react";
 import { Article } from "@/types";
 import { PLACEHOLDER_IMAGE } from "@/constants";
+import OptimizedImage from "@/components/OptimizedImage";
 
 interface Props {
   article: Article;
@@ -40,9 +41,11 @@ export default function DashboardArticleCard({ article, onBookmark, isBookmarked
       <div className="flex justify-between gap-8">
         <div className="flex-1 space-y-2">
           <div className="flex items-center gap-2 text-xs mb-3 flex-wrap">
-            <img
+            <OptimizedImage
               src={article.authorAvatar || PLACEHOLDER_IMAGE}
               alt={article.authorName}
+              width={20}
+              height={20}
               className="w-5 h-5 rounded-full object-cover"
             />
             <span className="font-bold text-zinc-800">{article.authorName}</span>
@@ -93,11 +96,13 @@ export default function DashboardArticleCard({ article, onBookmark, isBookmarked
           </div>
         </div>
 
-        <div className="w-28 h-28 sm:w-40 sm:h-28 shrink-0 overflow-hidden rounded border border-zinc-50">
-          <img
+        <div className="w-28 h-28 sm:w-40 sm:h-28 shrink-0 overflow-hidden rounded border border-zinc-50 relative">
+          <OptimizedImage
             src={article.featuredImage || PLACEHOLDER_IMAGE}
             alt={article.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            fill
+            sizes="160px"
+            className="object-cover group-hover:scale-105 transition-transform duration-300"
           />
         </div>
       </div>

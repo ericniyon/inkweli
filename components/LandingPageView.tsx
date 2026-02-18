@@ -3,6 +3,7 @@
 import React, { useMemo } from "react";
 import { Article, Category } from "../types";
 import { PLACEHOLDER_IMAGE } from "../constants";
+import OptimizedImage from "./OptimizedImage";
 import TrendingSection from "./TrendingSection";
 import { useSiteLayout } from "@/lib/site-layout-context";
 
@@ -77,7 +78,7 @@ const LandingPageView: React.FC<LandingPageViewProps> = ({ articles, onArticleCl
             >
               <div className="flex-grow space-y-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <img src={article.authorAvatar || PLACEHOLDER_IMAGE} className="w-5 h-5 rounded-full object-cover" alt="" />
+                  <OptimizedImage src={article.authorAvatar || PLACEHOLDER_IMAGE} alt={article.authorName} width={20} height={20} className="w-5 h-5 rounded-full object-cover" />
                   <span className="text-xs font-bold text-slate-900">{article.authorName}</span>
                 </div>
                 <h2 className="text-xl md:text-2xl font-black text-slate-900 leading-tight group-hover:text-slate-600 transition-colors">
@@ -98,8 +99,8 @@ const LandingPageView: React.FC<LandingPageViewProps> = ({ articles, onArticleCl
                   </button>
                 </div>
               </div>
-              <div className="w-full md:w-48 h-32 md:h-32 bg-slate-100 rounded-sm overflow-hidden flex-shrink-0">
-                <img src={article.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="" />
+              <div className="w-full md:w-48 h-32 md:h-32 bg-slate-100 rounded-sm overflow-hidden flex-shrink-0 relative">
+                <OptimizedImage src={article.featuredImage || PLACEHOLDER_IMAGE} alt={article.title} fill sizes="(max-width: 768px) 100vw, 192px" className="object-cover group-hover:scale-105 transition-transform duration-700" />
               </div>
             </article>
           ))}
