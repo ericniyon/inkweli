@@ -1,15 +1,15 @@
 {
   "app/admin/editor/page.tsx -> @/components/SummernoteEditor": {
-    "id": "app/admin/editor/page.tsx -> @/components/SummernoteEditor",
+    "id": 7826,
     "files": [
-      "static/css/_app-pages-browser_components_SummernoteEditor_tsx.css",
-      "static/chunks/_app-pages-browser_components_SummernoteEditor_tsx.js"
+      "static/css/bcd3ca5273627146.css",
+      "static/chunks/7826.99fadbd293f929c5.js"
     ]
   },
   "components/SummernoteEditor.tsx -> react-quill-new": {
-    "id": "components/SummernoteEditor.tsx -> react-quill-new",
+    "id": 3462,
     "files": [
-      "static/chunks/_app-pages-browser_node_modules_react-quill-new_lib_index_js.js"
+      "static/chunks/3462.b279c2990d7789f2.js"
     ]
   }
 }
