@@ -1,20 +1,37 @@
+"use client";
 
-import React from 'react';
-import { Article, Category } from '../types';
-import TrendingSection from './TrendingSection';
+import React, { useMemo } from "react";
+import { Article, Category } from "../types";
+import { PLACEHOLDER_IMAGE } from "../constants";
+import TrendingSection from "./TrendingSection";
+import { useSiteLayout } from "@/lib/site-layout-context";
 
 interface LandingPageViewProps {
   articles: Article[];
   onArticleClick: (article: Article) => void;
   onGetStarted: () => void;
+  onCategoryClick?: (category: Category) => void;
 }
 
-const LandingPageView: React.FC<LandingPageViewProps> = ({ articles, onArticleClick, onGetStarted }) => {
-  const topics: string[] = ['Technology', 'Relationships', 'Politics', 'Cryptocurrency', 'Self Improvement', 'Writing', 'Data Science', 'Programming'];
+const LandingPageView: React.FC<LandingPageViewProps> = ({ articles, onArticleClick, onGetStarted, onCategoryClick }) => {
+  const { showHero, showTrending } = useSiteLayout();
+
+  // Categories that have at least one article, sorted by article count (desc)
+  const categoriesWithCount = useMemo(() => {
+    const countByCategory = new Map<string, number>();
+    articles.forEach((a) => {
+      const cat = a.category;
+      countByCategory.set(cat, (countByCategory.get(cat) ?? 0) + 1);
+    });
+    return Array.from(countByCategory.entries())
+      .map(([name, count]) => ({ name: name as Category, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [articles]);
 
   return (
     <div className="animate-fade-in bg-white">
       {/* Hero Section */}
+      {showHero && (
       <section className="bg-[#FFC017] border-b border-slate-900 py-24 md:py-32 px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-12">
           <div className="max-w-2xl space-y-10">
@@ -44,9 +61,10 @@ const LandingPageView: React.FC<LandingPageViewProps> = ({ articles, onArticleCl
           </div>
         </div>
       </section>
+      )}
 
       {/* Trending Section */}
-      <TrendingSection articles={articles} onArticleClick={onArticleClick} />
+      {showTrending && <TrendingSection articles={articles} onArticleClick={onArticleClick} />}
 
       {/* Discovery Feed */}
       <div className="max-w-7xl mx-auto px-6 py-16 flex flex-col lg:flex-row gap-20">
@@ -59,7 +77,7 @@ const LandingPageView: React.FC<LandingPageViewProps> = ({ articles, onArticleCl
             >
               <div className="flex-grow space-y-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <img src={article.authorAvatar} className="w-5 h-5 rounded-full object-cover" />
+                  <img src={article.authorAvatar || PLACEHOLDER_IMAGE} className="w-5 h-5 rounded-full object-cover" alt="" />
                   <span className="text-xs font-bold text-slate-900">{article.authorName}</span>
                 </div>
                 <h2 className="text-xl md:text-2xl font-black text-slate-900 leading-tight group-hover:text-slate-600 transition-colors">
@@ -81,7 +99,7 @@ const LandingPageView: React.FC<LandingPageViewProps> = ({ articles, onArticleCl
                 </div>
               </div>
               <div className="w-full md:w-48 h-32 md:h-32 bg-slate-100 rounded-sm overflow-hidden flex-shrink-0">
-                <img src={article.featuredImage} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                <img src={article.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="" />
               </div>
             </article>
           ))}
@@ -92,16 +110,22 @@ const LandingPageView: React.FC<LandingPageViewProps> = ({ articles, onArticleCl
             <div>
               <h3 className="text-xs font-black text-slate-900 uppercase tracking-[0.2em] mb-6">Discover more of what matters to you</h3>
               <div className="flex flex-wrap gap-2">
-                {topics.map((topic) => (
-                  <button 
-                    key={topic} 
-                    className="px-4 py-2 border border-slate-200 rounded-full text-sm font-medium text-slate-600 hover:border-slate-900 hover:text-slate-900 transition"
-                  >
-                    {topic}
-                  </button>
-                ))}
+                {categoriesWithCount.length > 0 ? (
+                  categoriesWithCount.map(({ name, count }) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => onCategoryClick?.(name)}
+                      className="px-4 py-2 border border-slate-200 rounded-full text-sm font-medium text-slate-600 hover:border-slate-900 hover:text-slate-900 transition"
+                    >
+                      {name}
+                      <span className="ml-1.5 text-slate-400 font-normal">({count})</span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-sm text-slate-400">No categories yet. Check back after more stories are published.</p>
+                )}
               </div>
-              <button className="text-xs font-bold text-emerald-600 mt-6 hover:text-emerald-800 transition">See more topics</button>
             </div>
           </div>
         </aside>

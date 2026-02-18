@@ -1,6 +1,10 @@
 
 import { SubscriptionTier, Article, Category, User, UserRole } from './types';
 
+/** Fallback for img src to avoid empty string (browser re-download warning). */
+export const PLACEHOLDER_IMAGE =
+  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"%3E%3Crect fill="%23e2e8f0" width="40" height="40"/%3E%3C/svg%3E';
+
 export const GUEST_USER: User = {
   id: 'guest',
   name: 'Guest Reader',
@@ -14,24 +18,27 @@ export const GUEST_USER: User = {
   articlesViewedThisMonth: []
 };
 
+/** Subscription plans in RWF (Rwandan Franc). */
 export const SUBSCRIPTION_PLANS = [
   {
-    id: 'plan_unlimited',
-    tier: SubscriptionTier.UNLIMITED,
-    name: 'Unlimited Access',
-    price: 50000,
-    interval: 'year',
-    features: ['Unlimited stories', 'Full highlighting', 'Offline reading', 'Support authors'],
-    color: 'indigo'
+    id: 'plan_novis',
+    tier: SubscriptionTier.ONE_ARTICLE,
+    name: 'Novis',
+    price: 10000,
+    currency: 'RWF',
+    interval: 'month',
+    features: ['1 story per month', 'Highlight & comment', 'Support writers'],
+    color: 'slate'
   },
   {
-    id: 'plan_two',
+    id: 'plan_pro',
     tier: SubscriptionTier.TWO_ARTICLES,
-    name: 'Standard Access',
-    price: 30000,
+    name: 'Pro',
+    price: 20000,
+    currency: 'RWF',
     interval: 'month',
-    features: ['2 Stories per month', 'Highlight/comment access'],
-    color: 'slate'
+    features: ['More stories per month', 'Full highlighting', 'Offline reading', 'Support authors', 'Audio read', 'Article summarization'],
+    color: 'indigo'
   }
 ];
 

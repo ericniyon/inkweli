@@ -3,7 +3,8 @@ export enum UserRole {
   ADMIN = 'ADMIN',
   EDITOR = 'EDITOR',
   SUBSCRIBER = 'SUBSCRIBER',
-  FREE_USER = 'FREE_USER'
+  FREE_USER = 'FREE_USER',
+  USER = 'USER'
 }
 
 export enum SubscriptionTier {
@@ -65,6 +66,7 @@ export interface Article {
   readingTime: number;
   category: Category;
   claps: number;
+  hasClapped?: boolean;
   responses: Response[];
   highlights: Highlight[];
   tags: string[];

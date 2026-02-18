@@ -1,21 +1,256 @@
+"use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Stats, Article, User, UserRole, SubscriptionTier, Category } from '../types';
-import { MOCK_ARTICLES, WRITERS } from '../constants';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Stats, Article, Category } from '../types';
+import { WRITERS } from '../constants';
 import { GoogleGenAI } from "@google/genai";
 import Logo from './Logo';
+import { useAuth } from '@/lib/auth-context';
 
-type AdminSection = 'OVERVIEW' | 'ARTICLES' | 'USERS' | 'TEAM' | 'LAYOUT' | 'BRAND' | 'EDITOR';
+type AdminSection = 'OVERVIEW' | 'ARTICLES' | 'USERS' | 'TEAM' | 'LAYOUT' | 'BRAND';
 
-const AdminDashboard: React.FC = () => {
-  const [activeSection, setActiveSection] = useState<AdminSection>('OVERVIEW');
-  const [articles, setArticles] = useState<Article[]>(MOCK_ARTICLES);
-  
-  // CRUD States
-  const [editingArticle, setEditingArticle] = useState<Partial<Article> | null>(null);
+const ADMIN_NAV: { id: AdminSection; label: string; icon: string }[] = [
+  { id: 'OVERVIEW', label: 'Dashboard', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' },
+  { id: 'ARTICLES', label: 'Articles', icon: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10l4 4v10a2 2 0 01-2 2z' },
+  { id: 'USERS', label: 'Subscribers', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
+  { id: 'TEAM', label: 'Writers', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
+  { id: 'LAYOUT', label: 'Site Layout', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z' },
+  { id: 'BRAND', label: 'Brand Studio', icon: 'M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01' },
+];
+
+interface AdminDashboardProps {
+  initialSection?: AdminSection;
+}
+
+interface WriterFromApi {
+  id: string;
+  name: string;
+  role?: string;
+  bio?: string;
+  image?: string;
+  articlesCount: number;
+  socials: { twitter: string; linkedin: string };
+}
+
+interface SubscriberFromApi {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  tier: string;
+  joined: string;
+  status: string;
+}
+
+interface SiteLayoutSettingsForm {
+  showLogoInHeader: boolean;
+  stickyHeader: boolean;
+  showHero: boolean;
+  showTrending: boolean;
+  showFooter: boolean;
+}
+
+const PLACEHOLDER_IMAGE = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"%3E%3Crect fill="%23e2e8f0" width="40" height="40"/%3E%3C/svg%3E';
+
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERVIEW' }) => {
+  const router = useRouter();
+  const { logout } = useAuth();
+  const activeSection = initialSection;
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [articlesLoading, setArticlesLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [deletingInProgress, setDeletingInProgress] = useState(false);
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+
+  // Writers (TEAM section)
+  const [writersList, setWritersList] = useState<WriterFromApi[]>([]);
+  const [writersLoading, setWritersLoading] = useState(true);
+  const [addWriterModalOpen, setAddWriterModalOpen] = useState(false);
+  const [addWriterSubmitting, setAddWriterSubmitting] = useState(false);
+  const [removingWriterId, setRemovingWriterId] = useState<string | null>(null);
+  const [removingWriterInProgress, setRemovingWriterInProgress] = useState(false);
+  const [editingWriter, setEditingWriter] = useState<WriterFromApi | null>(null);
+  const [editWriterSubmitting, setEditWriterSubmitting] = useState(false);
+  const [subscribersList, setSubscribersList] = useState<SubscriberFromApi[]>([]);
+  const [subscribersLoading, setSubscribersLoading] = useState(true);
+  const [layoutSettings, setLayoutSettings] = useState<SiteLayoutSettingsForm | null>(null);
+  const [layoutLoading, setLayoutLoading] = useState(true);
+  const [layoutSaving, setLayoutSaving] = useState(false);
+  const [newWriterForm, setNewWriterForm] = useState({
+    name: '',
+    role: '',
+    bio: '',
+    image: '',
+    twitter: '',
+    linkedin: '',
+  });
+
+  useEffect(() => {
+    fetch('/api/articles?admin=1')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setArticles(Array.isArray(data) ? data : []))
+      .catch(() => setArticles([]))
+      .finally(() => setArticlesLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/writers')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setWritersList(Array.isArray(data) ? data : []))
+      .catch(() => setWritersList([]))
+      .finally(() => setWritersLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/users')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setSubscribersList(Array.isArray(data) ? data : []))
+      .catch(() => setSubscribersList([]))
+      .finally(() => setSubscribersLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/site-settings')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          setLayoutSettings({
+            showLogoInHeader: data.showLogoInHeader ?? true,
+            stickyHeader: data.stickyHeader ?? true,
+            showHero: data.showHero ?? true,
+            showTrending: data.showTrending ?? true,
+            showFooter: data.showFooter ?? true,
+          });
+        } else {
+          setLayoutSettings({
+            showLogoInHeader: true,
+            stickyHeader: true,
+            showHero: true,
+            showTrending: true,
+            showFooter: true,
+          });
+        }
+      })
+      .catch(() => setLayoutSettings({
+        showLogoInHeader: true,
+        stickyHeader: true,
+        showHero: true,
+        showTrending: true,
+        showFooter: true,
+      }))
+      .finally(() => setLayoutLoading(false));
+  }, []);
+
+  const handleSaveLayoutSettings = async () => {
+    if (!layoutSettings) return;
+    setLayoutSaving(true);
+    try {
+      const res = await fetch('/api/site-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(layoutSettings),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLayoutSettings(data);
+      }
+    } catch (e) {
+      console.error('Save layout failed', e);
+    } finally {
+      setLayoutSaving(false);
+    }
+  };
+
+  const refetchWriters = () => {
+    fetch('/api/writers')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setWritersList(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  };
+
+  const handleAddWriterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWriterForm.name.trim()) return;
+    setAddWriterSubmitting(true);
+    try {
+      const res = await fetch('/api/writers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newWriterForm.name.trim(),
+          role: newWriterForm.role.trim() || undefined,
+          bio: newWriterForm.bio.trim() || undefined,
+          image: newWriterForm.image.trim() || undefined,
+          twitter: newWriterForm.twitter.trim() || undefined,
+          linkedin: newWriterForm.linkedin.trim() || undefined,
+        }),
+      });
+      if (res.ok) {
+        setNewWriterForm({ name: '', role: '', bio: '', image: '', twitter: '', linkedin: '' });
+        setAddWriterModalOpen(false);
+        refetchWriters();
+      }
+    } catch (err) {
+      console.error('Add writer failed', err);
+    } finally {
+      setAddWriterSubmitting(false);
+    }
+  };
+
+  const handleRemoveWriter = async (writerId: string) => {
+    setRemovingWriterInProgress(true);
+    try {
+      const res = await fetch(`/api/writers/${writerId}`, { method: 'DELETE' });
+      if (res.ok) setWritersList((prev) => prev.filter((w) => w.id !== writerId));
+    } catch (e) {
+      console.error('Remove writer failed', e);
+    } finally {
+      setRemovingWriterInProgress(false);
+      setRemovingWriterId(null);
+    }
+  };
+
+  const openEditWriter = (w: WriterFromApi) => {
+    setNewWriterForm({
+      name: w.name,
+      role: w.role ?? '',
+      bio: w.bio ?? '',
+      image: w.image ?? '',
+      twitter: w.socials?.twitter && w.socials.twitter !== '#' ? w.socials.twitter : '',
+      linkedin: w.socials?.linkedin && w.socials.linkedin !== '#' ? w.socials.linkedin : '',
+    });
+    setEditingWriter(w);
+  };
+
+  const handleEditWriterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingWriter || !newWriterForm.name.trim()) return;
+    setEditWriterSubmitting(true);
+    try {
+      const res = await fetch(`/api/writers/${editingWriter.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newWriterForm.name.trim(),
+          role: newWriterForm.role.trim() || null,
+          bio: newWriterForm.bio.trim() || null,
+          image: newWriterForm.image.trim() || null,
+          twitter: newWriterForm.twitter.trim() || null,
+          linkedin: newWriterForm.linkedin.trim() || null,
+        }),
+      });
+      if (res.ok) {
+        setEditingWriter(null);
+        refetchWriters();
+      }
+    } catch (err) {
+      console.error('Edit writer failed', err);
+    } finally {
+      setEditWriterSubmitting(false);
+    }
+  };
 
   // Brand Studio State
   const [brandPrompt, setBrandPrompt] = useState('');
@@ -27,11 +262,16 @@ const AdminDashboard: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<Category | 'All'>('All');
   const [statusFilter, setStatusFilter] = useState<'All' | 'DRAFT' | 'PUBLISHED' | 'SCHEDULED'>('All');
 
+  const publishedCount = useMemo(() => articles.filter((a) => a.status === 'PUBLISHED').length, [articles]);
+  const subscriberCount = useMemo(
+    () => subscribersList.filter((u) => u.role !== 'ADMIN').length,
+    [subscribersList]
+  );
   const stats: Stats = {
-    totalRevenue: 1450000,
-    subscriberCount: 842,
+    totalRevenue: 0,
+    subscriberCount,
     articleCount: articles.length,
-    monthlyGrowth: 12.5
+    monthlyGrowth: 0,
   };
 
   const generateBrandAsset = async () => {
@@ -49,10 +289,13 @@ const AdminDashboard: React.FC = () => {
         }
       });
 
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-          setGeneratedLogo(`data:image/png;base64,${part.inlineData.data}`);
-          break;
+      const candidate = response.candidates?.[0];
+      if (candidate?.content?.parts) {
+        for (const part of candidate.content.parts) {
+          if (part.inlineData) {
+            setGeneratedLogo(`data:image/png;base64,${part.inlineData.data}`);
+            break;
+          }
         }
       }
     } catch (error) {
@@ -62,40 +305,37 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleSaveArticle = () => {
-    if (!editingArticle || !editingArticle.title) return;
-    setIsSaving(true);
-
-    setTimeout(() => {
-      if (editingArticle.id) {
-        setArticles(prev => prev.map(a => a.id === editingArticle.id ? { ...a, ...editingArticle as Article } : a));
-      } else {
-        const newArt: Article = {
-          ...editingArticle as Article,
-          id: Math.random().toString(36).substr(2, 9),
-          slug: editingArticle.title.toLowerCase().replace(/ /g, '-'),
-          authorId: 'auth_admin',
-          authorName: 'Admin Editor',
-          authorAvatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=64&h=64&auto=format&fit=crop',
-          publishDate: new Date().toISOString().split('T')[0],
-          claps: 0,
-          responses: [],
-          highlights: [],
-          tags: [editingArticle.category || 'General'],
-          readingTime: Math.ceil((editingArticle.content || '').split(' ').length / 200)
-        };
-        setArticles(prev => [newArt, ...prev]);
-      }
-      setIsSaving(false);
-      setLastSaved(new Date().toLocaleTimeString());
-      setActiveSection('ARTICLES');
-      setEditingArticle(null);
-    }, 800);
+  const handleDeleteArticle = async (id: string) => {
+    setDeletingInProgress(true);
+    try {
+      const res = await fetch(`/api/articles/${id}`, { method: 'DELETE' });
+      if (res.ok) setArticles((prev) => prev.filter((a) => a.id !== id));
+    } catch (e) {
+      console.error('Delete article failed', e);
+    } finally {
+      setDeletingInProgress(false);
+      setIsDeleting(null);
+    }
   };
 
-  const handleDeleteArticle = (id: string) => {
-    setArticles(prev => prev.filter(a => a.id !== id));
-    setIsDeleting(null);
+  const handleStatusChange = async (articleId: string, newStatus: 'DRAFT' | 'PUBLISHED' | 'SCHEDULED') => {
+    setUpdatingStatusId(articleId);
+    try {
+      const res = await fetch(`/api/articles/${articleId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        setArticles((prev) =>
+          prev.map((a) => (a.id === articleId ? { ...a, status: newStatus } : a))
+        );
+      }
+    } catch (e) {
+      console.error('Update status failed', e);
+    } finally {
+      setUpdatingStatusId(null);
+    }
   };
 
   const filteredArticles = useMemo(() => {
@@ -109,248 +349,27 @@ const AdminDashboard: React.FC = () => {
     });
   }, [articles, searchTerm, categoryFilter, statusFilter]);
 
-  const suggestExcerpt = async () => {
-    if (!editingArticle?.content) return;
-    setIsGenerating(true);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Generate a compelling one-sentence SEO excerpt for this article content: ${editingArticle.content.substring(0, 1000)}`,
-      });
-      setEditingArticle(prev => ({ ...prev, excerpt: response.text?.trim() }));
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const wordCount = useMemo(() => (editingArticle?.content || '').trim().split(/\s+/).filter(Boolean).length, [editingArticle?.content]);
-  const readTime = Math.ceil(wordCount / 200);
-
-  if (activeSection === 'EDITOR') {
-    return (
-      <div className="flex flex-col min-h-screen bg-white animate-fade-in overflow-hidden">
-        {/* Editor Header */}
-        <header className="px-12 py-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-[100] h-20">
-          <div className="flex items-center gap-6">
-            <button 
-              onClick={() => { setActiveSection('ARTICLES'); setEditingArticle(null); }}
-              className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-slate-900 transition"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7"/></svg>
-            </button>
-            <div className="flex flex-col">
-              <h3 className="text-sm font-black text-slate-900 tracking-tight uppercase leading-none">
-                {editingArticle?.id ? 'Edit Story' : 'New Story'}
-              </h3>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dashboard / Editorial / </span>
-                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{editingArticle?.title || 'Untitled'}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${isSaving ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                {isSaving ? 'Saving Changes...' : lastSaved ? `Last Saved ${lastSaved}` : 'Draft ready'}
-              </span>
-            </div>
-            <div className="h-6 w-px bg-slate-100" />
-            <button 
-              onClick={handleSaveArticle}
-              disabled={isSaving}
-              className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-slate-100 hover:bg-indigo-600 transition-all disabled:opacity-50"
-            >
-              {editingArticle?.status === 'PUBLISHED' ? 'Update Live' : 'Publish Story'}
-            </button>
-          </div>
-        </header>
-
-        <div className="flex flex-1 overflow-hidden">
-          {/* Main Writing Area */}
-          <main className="flex-1 overflow-y-auto pt-24 pb-40 px-12 lg:px-0 no-scrollbar">
-            <div className="max-w-3xl mx-auto space-y-12">
-              <textarea 
-                placeholder="Story Title..."
-                className="w-full text-5xl md:text-6xl font-black Charter outline-none border-none resize-none placeholder:text-slate-100 text-slate-900 leading-[1.15]"
-                value={editingArticle?.title}
-                rows={2}
-                onChange={(e) => setEditingArticle(prev => ({ ...prev!, title: e.target.value }))}
-                autoFocus
-              />
-              
-              <textarea 
-                placeholder="Begin your story here..."
-                className="w-full text-xl Charter outline-none border-none resize-none placeholder:text-slate-100 text-slate-700 leading-relaxed min-h-[600px]"
-                value={editingArticle?.content}
-                onChange={(e) => setEditingArticle(prev => ({ ...prev!, content: e.target.value }))}
-              />
-            </div>
-          </main>
-
-          {/* Right Panel Settings */}
-          <aside className="w-96 bg-slate-50 border-l border-slate-100 overflow-y-auto no-scrollbar pt-12 px-10 pb-20 space-y-12">
-            <div className="space-y-8">
-              <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest border-b border-slate-200 pb-3 flex items-center justify-between">
-                Story Settings
-                <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="2.5"/></svg>
-              </h4>
-              
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Editorial Section</label>
-                <select 
-                  className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-900 transition shadow-sm"
-                  value={editingArticle?.category}
-                  onChange={(e) => setEditingArticle(prev => ({ ...prev!, category: e.target.value as Category }))}
-                >
-                  <option>General</option>
-                  <option>Politics</option>
-                  <option>Economy</option>
-                  <option>Culture</option>
-                  <option>Technology</option>
-                  <option>Science</option>
-                  <option>Opinion</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Release Flow</label>
-                <select 
-                  className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-900 transition shadow-sm"
-                  value={editingArticle?.status}
-                  onChange={(e) => setEditingArticle(prev => ({ ...prev!, status: e.target.value as any }))}
-                >
-                  <option value="DRAFT">Personal Draft</option>
-                  <option value="PUBLISHED">Go Live Instantly</option>
-                  <option value="SCHEDULED">Schedule for Later</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Card Excerpt</label>
-                  <button 
-                    onClick={suggestExcerpt}
-                    disabled={isGenerating || !editingArticle?.content}
-                    className="text-[9px] font-black text-indigo-600 uppercase tracking-widest hover:underline disabled:opacity-50"
-                  >
-                    AI Suggestions
-                  </button>
-                </div>
-                <textarea 
-                  className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 text-sm font-medium outline-none h-32 Charter leading-relaxed shadow-sm"
-                  placeholder="Summary for feed and SEO..."
-                  value={editingArticle?.excerpt}
-                  onChange={(e) => setEditingArticle(prev => ({ ...prev!, excerpt: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Featured Cover</label>
-                <div className="relative group">
-                  <input 
-                    type="text"
-                    className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-900 transition shadow-sm pr-12"
-                    placeholder="https://images.unsplash.com/..."
-                    value={editingArticle?.featuredImage}
-                    onChange={(e) => setEditingArticle(prev => ({ ...prev!, featuredImage: e.target.value }))}
-                  />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-900 transition">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" strokeWidth="2" /></svg>
-                  </div>
-                </div>
-                {editingArticle?.featuredImage && (
-                  <div className="mt-4 aspect-video rounded-3xl overflow-hidden border border-slate-200 shadow-xl animate-fade-in group">
-                    <img src={editingArticle.featuredImage} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white space-y-4 shadow-2xl shadow-slate-200">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Publication Metrics</h4>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-400">Total Words</span>
-                <span className="text-sm font-black text-white">{wordCount}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-400">Read Estimate</span>
-                <span className="text-sm font-black text-indigo-400">{readTime} minutes</span>
-              </div>
-              <div className="h-px bg-white/5 my-2" />
-              <p className="text-[10px] text-white/30 font-bold leading-relaxed">
-                * Based on average reading speed of 200 wpm. This helps us rank your story for user engagement.
-              </p>
-            </div>
-          </aside>
-        </div>
-
-        {/* Floating Editor Status Bar */}
-        <div className="fixed bottom-8 left-12 bg-white/80 backdrop-blur-md border border-slate-200 rounded-full px-8 py-3 flex items-center gap-10 shadow-2xl z-[150] animate-fade-up">
-           <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">Editing Mode</span>
-           </div>
-           <div className="h-4 w-px bg-slate-200" />
-           <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-             Words: <span className="text-slate-900">{wordCount}</span>
-           </div>
-           <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-             Time: <span className="text-slate-900">{readTime}m</span>
-           </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex min-h-screen bg-[#F8FAFC]">
-      <aside className="w-72 bg-slate-900 text-white flex flex-col sticky top-0 h-screen">
-        <div className="p-8 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <Logo size="sm" variant="light" className="group-hover:rotate-12 transition-transform" />
-            <span className="font-black tracking-tighter text-xl uppercase">usethinkup <span className="text-[10px] text-indigo-400 align-top uppercase">CMS</span></span>
-          </div>
-        </div>
-        
-        <nav className="flex-grow p-6 space-y-2">
-          {[
-            { id: 'OVERVIEW', label: 'Dashboard', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' },
-            { id: 'ARTICLES', label: 'Articles', icon: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10l4 4v10a2 2 0 01-2 2z' },
-            { id: 'USERS', label: 'Subscribers', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
-            { id: 'TEAM', label: 'Writers', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
-            { id: 'LAYOUT', label: 'Site Layout', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z' },
-            { id: 'BRAND', label: 'Brand Studio', icon: 'M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01' },
-          ].map(item => (
-            <button 
-              key={item.id}
-              onClick={() => setActiveSection(item.id as AdminSection)}
-              className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-black transition-all ${activeSection === item.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={item.icon}></path></svg>
-              {item.label}
-            </button>
-          ))}
-        </nav>
-      </aside>
-
+    <>
       <main className="flex-grow overflow-y-auto">
         <header className="bg-white border-b border-slate-100 px-12 py-6 flex justify-between items-center sticky top-0 z-40">
            <div>
-             <h2 className="text-2xl font-black text-slate-900 tracking-tight">{activeSection}</h2>
+             <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+               {ADMIN_NAV.find(n => n.id === activeSection)?.label ?? activeSection}
+             </h2>
              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">System Management</p>
            </div>
            <div className="flex items-center gap-4">
-              <div className="flex -space-x-2">
-                 {WRITERS.slice(0, 3).map(w => (
-                   <img key={w.id} src={w.image} className="w-8 h-8 rounded-full border-2 border-white object-cover" />
-                 ))}
-              </div>
-              <button className="text-[10px] font-black uppercase text-indigo-600 tracking-widest hover:text-indigo-700 transition">View Team</button>
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  router.push('/');
+                }}
+                className="text-[10px] font-black uppercase text-slate-500 hover:text-slate-900 tracking-widest transition"
+              >
+                Log out
+              </button>
            </div>
         </header>
 
@@ -400,20 +419,255 @@ const AdminDashboard: React.FC = () => {
             </div>
           )}
 
+          {activeSection === 'USERS' && (
+            <div className="space-y-8 animate-fade-in">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <p className="text-slate-500 font-medium">Manage subscribers and subscription tiers.</p>
+                <button type="button" className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 transition">
+                  Export list
+                </button>
+              </div>
+              <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                      <th className="px-8 py-6">Subscriber</th>
+                      <th className="px-8 py-6">Tier</th>
+                      <th className="px-8 py-6">Joined</th>
+                      <th className="px-8 py-6">Status</th>
+                      <th className="px-8 py-6 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {subscribersLoading ? (
+                      <tr>
+                        <td colSpan={5} className="px-8 py-12 text-center text-slate-500 font-medium">
+                          Loading subscribers…
+                        </td>
+                      </tr>
+                    ) : subscribersList.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-8 py-12 text-center text-slate-500 font-medium">
+                          No subscribers in the database yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      subscribersList.map((row) => (
+                        <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-8 py-6">
+                            <div>
+                              <p className="text-sm font-black text-slate-900">{row.name}</p>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase">{row.email}</p>
+                            </div>
+                          </td>
+                          <td className="px-8 py-6">
+                            <span className="text-[10px] font-black text-slate-600 bg-slate-100 px-3 py-1 rounded-full uppercase tracking-widest">
+                              {row.tier === 'UNLIMITED' ? 'Unlimited' : row.tier === 'TWO_ARTICLES' ? 'Standard' : row.tier === 'ONE_ARTICLE' ? 'One article' : row.tier === 'NONE' ? 'None' : row.tier}
+                            </span>
+                          </td>
+                          <td className="px-8 py-6 text-sm font-bold text-slate-600">{row.joined}</td>
+                          <td className="px-8 py-6">
+                            <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${row.status === 'Active' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-600 bg-slate-100'}`}>
+                              {row.status}
+                            </span>
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <button type="button" className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline">View</button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'TEAM' && (
+            <div className="space-y-8 animate-fade-in">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <p className="text-slate-500 font-medium">Manage writers and contributors.</p>
+                <button
+                  onClick={() => {
+                    setNewWriterForm({ name: '', role: '', bio: '', image: '', twitter: '', linkedin: '' });
+                    setAddWriterModalOpen(true);
+                  }}
+                  className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 transition"
+                >
+                  Add writer
+                </button>
+              </div>
+              {writersLoading ? (
+                <div className="bg-white rounded-[2.5rem] border border-slate-100 p-12 text-center text-slate-500 font-medium">
+                  Loading writers…
+                </div>
+              ) : writersList.length === 0 ? (
+                <div className="bg-white rounded-[2.5rem] border border-slate-100 p-12 text-center">
+                  <p className="text-slate-500 font-medium mb-4">No writers yet.</p>
+                  <button
+                    onClick={() => {
+                      setNewWriterForm({ name: '', role: '', bio: '', image: '', twitter: '', linkedin: '' });
+                      setAddWriterModalOpen(true);
+                    }}
+                    className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 transition"
+                  >
+                    Add writer
+                  </button>
+                </div>
+              ) : (
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {writersList.map(w => (
+                  <div key={w.id} className="bg-white rounded-[2.5rem] border border-slate-100 p-8 shadow-sm hover:shadow-lg transition-all">
+                    <div className="flex items-start gap-4">
+                      <div className="w-14 h-14 rounded-2xl overflow-hidden border border-slate-100 flex-shrink-0 bg-slate-100">
+                        <img src={w.image || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt={w.name} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-base font-black text-slate-900 truncate">{w.name}</h4>
+                        {w.role && <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mt-0.5">{w.role}</p>}
+                        {w.bio && <p className="text-xs text-slate-500 mt-2 line-clamp-2">{w.bio}</p>}
+                        <p className="text-[10px] font-black text-slate-400 uppercase mt-3">{w.articlesCount} articles</p>
+                      </div>
+                    </div>
+                    <div className="mt-6 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditWriter(w)}
+                        className="flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRemovingWriterId(w.id)}
+                        className="py-2.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 text-slate-400 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              )}
+            </div>
+          )}
+
+          {activeSection === 'LAYOUT' && (
+            <div className="max-w-3xl space-y-8 animate-fade-in">
+              <p className="text-slate-500 font-medium">Configure global site structure and visibility of sections. Changes apply to the public site immediately after saving.</p>
+              {layoutLoading ? (
+                <div className="bg-white rounded-[2.5rem] border border-slate-100 p-12 text-center text-slate-500 font-medium">
+                  Loading layout settings…
+                </div>
+              ) : layoutSettings && (
+              <div className="bg-white rounded-[2.5rem] border border-slate-100 p-8 shadow-sm space-y-8">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-3">Header &amp; navigation</h4>
+                <div className="flex items-center justify-between py-4 border-b border-slate-50">
+                  <div>
+                    <p className="text-sm font-black text-slate-900">Show logo in header</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Display site logo in the main navigation bar</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={layoutSettings.showLogoInHeader}
+                      onChange={() => setLayoutSettings((s) => s ? { ...s, showLogoInHeader: !s.showLogoInHeader } : s)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:ring-2 peer-focus:ring-indigo-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600" />
+                  </label>
+                </div>
+                <div className="flex items-center justify-between py-4 border-b border-slate-50">
+                  <div>
+                    <p className="text-sm font-black text-slate-900">Sticky header</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Keep navigation visible on scroll</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={layoutSettings.stickyHeader}
+                      onChange={() => setLayoutSettings((s) => s ? { ...s, stickyHeader: !s.stickyHeader } : s)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:ring-2 peer-focus:ring-indigo-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600" />
+                  </label>
+                </div>
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-3 pt-4">Homepage sections</h4>
+                <div className="flex items-center justify-between py-4 border-b border-slate-50">
+                  <div>
+                    <p className="text-sm font-black text-slate-900">Hero / landing block</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Yellow hero with &quot;Think deeper&quot; headline</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={layoutSettings.showHero}
+                      onChange={() => setLayoutSettings((s) => s ? { ...s, showHero: !s.showHero } : s)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:ring-2 peer-focus:ring-indigo-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600" />
+                  </label>
+                </div>
+                <div className="flex items-center justify-between py-4 border-b border-slate-50">
+                  <div>
+                    <p className="text-sm font-black text-slate-900">Trending section</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Show trending stories on the feed</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={layoutSettings.showTrending}
+                      onChange={() => setLayoutSettings((s) => s ? { ...s, showTrending: !s.showTrending } : s)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:ring-2 peer-focus:ring-indigo-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600" />
+                  </label>
+                </div>
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-3 pt-4">Footer</h4>
+                <div className="flex items-center justify-between py-4">
+                  <div>
+                    <p className="text-sm font-black text-slate-900">Show footer on all pages</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Display links and copyright in footer</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={layoutSettings.showFooter}
+                      onChange={() => setLayoutSettings((s) => s ? { ...s, showFooter: !s.showFooter } : s)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:ring-2 peer-focus:ring-indigo-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600" />
+                  </label>
+                </div>
+                <div className="pt-6">
+                  <button
+                    type="button"
+                    onClick={handleSaveLayoutSettings}
+                    disabled={layoutSaving}
+                    className="bg-slate-900 text-white px-8 py-4 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 transition disabled:opacity-50"
+                  >
+                    {layoutSaving ? 'Saving…' : 'Save layout settings'}
+                  </button>
+                </div>
+              </div>
+              )}
+            </div>
+          )}
+
           {activeSection === 'OVERVIEW' && (
             <div className="space-y-12 animate-fade-in">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-16">
                 {[
-                  { label: 'ARR (USD)', value: stats.totalRevenue.toLocaleString(), trend: '+12.5%', color: 'indigo' },
-                  { label: 'Subscribers', value: stats.subscriberCount.toLocaleString(), trend: '+42 new', color: 'slate' },
-                  { label: 'Article Count', value: stats.articleCount.toString(), trend: '+5 this wk', color: 'slate' },
-                  { label: 'Growth rate', value: '94.2%', trend: '+0.4%', color: 'emerald' }
+                  { label: 'Subscribers', value: stats.subscriberCount.toLocaleString(), sub: 'From database' },
+                  { label: 'Articles', value: stats.articleCount.toString(), sub: 'Total' },
+                  { label: 'Published', value: publishedCount.toString(), sub: 'Live' },
+                  { label: 'Writers', value: writersList.length.toString(), sub: 'Team' },
                 ].map((item, i) => (
                   <div key={i} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden group hover:shadow-xl transition-all hover:-translate-y-1">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{item.label}</p>
                     <div className="flex items-baseline gap-3">
                       <h2 className="text-3xl font-black text-slate-900">{item.value}</h2>
-                      <span className="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full">{item.trend}</span>
+                      {item.sub && <span className="text-[10px] font-bold text-slate-400">{item.sub}</span>}
                     </div>
                   </div>
                 ))}
@@ -422,13 +676,18 @@ const AdminDashboard: React.FC = () => {
               <div className="bg-white rounded-[3rem] border border-slate-100 p-10">
                  <div className="flex justify-between items-center mb-10">
                     <h3 className="text-xl font-black text-slate-900 tracking-tight">Recent Editorial Activity</h3>
-                    <button onClick={() => setActiveSection('ARTICLES')} className="text-xs font-black uppercase text-indigo-600 tracking-widest">Manage All</button>
+                    <Link href="/admin/articles" className="text-xs font-black uppercase text-indigo-600 tracking-widest hover:underline">Manage All</Link>
                  </div>
+                 {articlesLoading ? (
+                   <div className="py-12 text-center text-slate-500 font-medium">Loading articles…</div>
+                 ) : articles.length === 0 ? (
+                   <div className="py-12 text-center text-slate-500 font-medium">No articles yet. <Link href="/admin/editor" className="text-indigo-600 hover:underline">Create one</Link>.</div>
+                 ) : (
                  <div className="space-y-6">
                     {articles.slice(0, 5).map(art => (
                       <div key={art.id} className="flex items-center gap-6 p-4 hover:bg-slate-50 rounded-2xl transition-colors group">
                          <div className="w-12 h-12 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0">
-                            <img src={art.featuredImage} className="w-full h-full object-cover" />
+                            <img src={art.featuredImage || PLACEHOLDER_IMAGE} alt="" className="w-full h-full object-cover" />
                          </div>
                          <div className="flex-1">
                             <h4 className="text-sm font-black text-slate-900 line-clamp-1">{art.title}</h4>
@@ -440,6 +699,7 @@ const AdminDashboard: React.FC = () => {
                       </div>
                     ))}
                  </div>
+                 )}
               </div>
             </div>
           )}
@@ -482,12 +742,12 @@ const AdminDashboard: React.FC = () => {
                     </select>
                   </div>
                 </div>
-                <button 
-                  onClick={() => { setEditingArticle({ title: '', content: '', category: 'General', status: 'DRAFT', excerpt: '', featuredImage: '' }); setActiveSection('EDITOR'); }} 
-                  className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-100 hover:bg-indigo-600 transition-all"
+                <Link 
+                  href="/admin/editor"
+                  className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-100 hover:bg-indigo-600 transition-all inline-block"
                 >
                   Compose New
-                </button>
+                </Link>
               </div>
               
               <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
@@ -502,51 +762,81 @@ const AdminDashboard: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {filteredArticles.map(article => (
-                      <tr key={article.id} className="hover:bg-slate-50/50 transition-colors group">
-                        <td className="px-8 py-6">
-                           <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 bg-slate-100 rounded-lg overflow-hidden flex-shrink-0">
-                                 <img src={article.featuredImage} className="w-full h-full object-cover" />
-                              </div>
-                              <div>
-                                 <p className="text-sm font-black text-slate-900 truncate max-w-[250px]">{article.title}</p>
-                                 <p className="text-[10px] font-bold text-slate-400 uppercase">{article.authorName} • {article.publishDate}</p>
-                              </div>
-                           </div>
-                        </td>
-                        <td className="px-8 py-6">
-                          <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-3 py-1 rounded-full uppercase tracking-widest">{article.category}</span>
-                        </td>
-                        <td className="px-8 py-6">
-                           <div className="flex items-center gap-4 text-xs font-bold text-slate-600">
-                              <span className="flex items-center gap-1"><svg className="w-3 h-3 text-slate-400" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" /></svg>{article.claps}</span>
-                              <span className="text-[10px] text-slate-300 font-black tracking-tighter uppercase">{article.readingTime}M</span>
-                           </div>
-                        </td>
-                        <td className="px-8 py-6">
-                          <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${article.status === 'PUBLISHED' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>{article.status}</span>
-                        </td>
-                        <td className="px-8 py-6 text-right">
-                           <div className="flex justify-end gap-2">
-                              <button 
-                                onClick={() => { setEditingArticle(article); setActiveSection('EDITOR'); }}
-                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                                title="Edit"
-                              >
-                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                              </button>
-                              <button 
-                                onClick={() => setIsDeleting(article.id)}
-                                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                                title="Delete"
-                              >
-                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                              </button>
-                           </div>
+                    {articlesLoading ? (
+                      <tr>
+                        <td colSpan={5} className="px-8 py-12 text-center text-slate-500 font-medium">
+                          Loading articles…
                         </td>
                       </tr>
-                    ))}
+                    ) : filteredArticles.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-8 py-12 text-center text-slate-500 font-medium">
+                          No articles yet. <Link href="/admin/editor" className="text-indigo-600 hover:underline">Compose one</Link>.
+                        </td>
+                      </tr>
+                    ) : (
+                    <>
+                      {filteredArticles.map(article => (
+                        <tr key={article.id} className="hover:bg-slate-50/50 transition-colors group">
+                          <td className="px-8 py-6">
+                             <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 bg-slate-100 rounded-lg overflow-hidden flex-shrink-0">
+                                   <img src={article.featuredImage || PLACEHOLDER_IMAGE} alt="" className="w-full h-full object-cover" />
+                                </div>
+                                <div>
+                                   <p className="text-sm font-black text-slate-900 truncate max-w-[250px]">{article.title}</p>
+                                   <p className="text-[10px] font-bold text-slate-400 uppercase">{article.authorName} • {article.publishDate}</p>
+                                </div>
+                             </div>
+                          </td>
+                          <td className="px-8 py-6">
+                            <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-3 py-1 rounded-full uppercase tracking-widest">{article.category}</span>
+                          </td>
+                          <td className="px-8 py-6">
+                             <div className="flex items-center gap-4 text-xs font-bold text-slate-600">
+                                <span className="flex items-center gap-1"><svg className="w-3 h-3 text-slate-400" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" /></svg>{article.claps}</span>
+                                <span className="text-[10px] text-slate-300 font-black tracking-tighter uppercase">{article.readingTime}M</span>
+                             </div>
+                          </td>
+                          <td className="px-8 py-6">
+                            <select
+                              value={article.status}
+                              onChange={(e) => handleStatusChange(article.id, e.target.value as 'DRAFT' | 'PUBLISHED' | 'SCHEDULED')}
+                              disabled={updatingStatusId === article.id}
+                              className={`text-[10px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest border-0 cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500 ${article.status === 'PUBLISHED' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}
+                            >
+                              <option value="DRAFT">Draft</option>
+                              <option value="PUBLISHED">Published</option>
+                              <option value="SCHEDULED">Scheduled</option>
+                            </select>
+                            {updatingStatusId === article.id && (
+                              <span className="ml-2 text-[10px] text-slate-400">Updating…</span>
+                            )}
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                             <div className="flex justify-end items-center gap-3">
+                                <Link 
+                                  href={`/admin/editor?id=${article.id}`}
+                                  className="inline-flex items-center gap-2 px-3 py-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all text-xs font-bold"
+                                  title="Edit article"
+                                >
+                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                   Edit
+                                </Link>
+                                <button 
+                                  onClick={() => setIsDeleting(article.id)}
+                                  className="inline-flex items-center gap-2 px-3 py-2 text-slate-600 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all text-xs font-bold"
+                                  title="Delete article"
+                                >
+                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                   Delete
+                                </button>
+                             </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -566,22 +856,239 @@ const AdminDashboard: React.FC = () => {
               <p className="text-slate-500 font-medium mb-10 Charter">This action is permanent and cannot be undone. All engagement data, highlights, and claps for this article will be lost.</p>
               <div className="flex gap-4">
                  <button 
-                  onClick={() => setIsDeleting(null)}
-                  className="flex-1 px-8 py-4 rounded-2xl text-xs font-black text-slate-400 hover:text-slate-900 uppercase tracking-widest transition"
+                  onClick={() => !deletingInProgress && setIsDeleting(null)}
+                  disabled={deletingInProgress}
+                  className="flex-1 px-8 py-4 rounded-2xl text-xs font-black text-slate-400 hover:text-slate-900 uppercase tracking-widest transition disabled:opacity-50"
                  >
                    Keep Story
                  </button>
                  <button 
-                  onClick={() => handleDeleteArticle(isDeleting)}
-                  className="flex-1 bg-red-500 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-red-100 hover:bg-red-600 transition"
+                  onClick={() => isDeleting && handleDeleteArticle(isDeleting)}
+                  disabled={deletingInProgress}
+                  className="flex-1 bg-red-500 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-red-100 hover:bg-red-600 transition disabled:opacity-50"
                  >
-                   Confirm Delete
+                   {deletingInProgress ? 'Deleting…' : 'Confirm Delete'}
                  </button>
               </div>
            </div>
         </div>
       )}
-    </div>
+
+      {/* Remove Writer Confirmation Modal */}
+      {removingWriterId && (
+        <div className="fixed inset-0 z-[300] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-[3rem] p-12 max-w-md w-full animate-fade-up shadow-2xl">
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mb-8">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </div>
+            <h3 className="text-2xl font-black text-slate-900 mb-4">Remove this writer?</h3>
+            <p className="text-slate-500 font-medium mb-10">
+              {writersList.find((w) => w.id === removingWriterId)?.name ?? 'This writer'} will be removed from the team list. This does not delete any articles.
+            </p>
+            <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={() => !removingWriterInProgress && setRemovingWriterId(null)}
+                disabled={removingWriterInProgress}
+                className="flex-1 px-8 py-4 rounded-2xl text-xs font-black text-slate-400 hover:text-slate-900 uppercase tracking-widest transition disabled:opacity-50"
+              >
+                Keep
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRemoveWriter(removingWriterId)}
+                disabled={removingWriterInProgress}
+                className="flex-1 bg-red-500 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-red-100 hover:bg-red-600 transition disabled:opacity-50"
+              >
+                {removingWriterInProgress ? 'Removing…' : 'Remove writer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Writer Modal */}
+      {editingWriter && (
+        <div className="fixed inset-0 z-[300] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-[3rem] p-10 max-w-lg w-full animate-fade-up shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-2xl font-black text-slate-900 mb-6">Edit writer</h3>
+            <form onSubmit={handleEditWriterSubmit} className="space-y-5">
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={newWriterForm.name}
+                  onChange={(e) => setNewWriterForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Jean Bosco"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Role</label>
+                <input
+                  type="text"
+                  value={newWriterForm.role}
+                  onChange={(e) => setNewWriterForm((f) => ({ ...f, role: e.target.value }))}
+                  placeholder="e.g. Senior Correspondent"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Bio</label>
+                <textarea
+                  value={newWriterForm.bio}
+                  onChange={(e) => setNewWriterForm((f) => ({ ...f, bio: e.target.value }))}
+                  placeholder="Short bio or description"
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Image URL</label>
+                <input
+                  type="url"
+                  value={newWriterForm.image}
+                  onChange={(e) => setNewWriterForm((f) => ({ ...f, image: e.target.value }))}
+                  placeholder="https://..."
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Twitter</label>
+                  <input
+                    type="text"
+                    value={newWriterForm.twitter}
+                    onChange={(e) => setNewWriterForm((f) => ({ ...f, twitter: e.target.value }))}
+                    placeholder="URL or handle"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">LinkedIn</label>
+                  <input
+                    type="text"
+                    value={newWriterForm.linkedin}
+                    onChange={(e) => setNewWriterForm((f) => ({ ...f, linkedin: e.target.value }))}
+                    placeholder="URL"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setEditingWriter(null)}
+                  disabled={editWriterSubmitting}
+                  className="flex-1 px-8 py-4 rounded-2xl text-xs font-black text-slate-400 hover:text-slate-900 uppercase tracking-widest border border-slate-200 hover:bg-slate-50 transition disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editWriterSubmitting || !newWriterForm.name.trim()}
+                  className="flex-1 bg-slate-900 text-white px-8 py-4 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 transition disabled:opacity-50"
+                >
+                  {editWriterSubmitting ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Writer Modal */}
+      {addWriterModalOpen && (
+        <div className="fixed inset-0 z-[300] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-[3rem] p-10 max-w-lg w-full animate-fade-up shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-2xl font-black text-slate-900 mb-6">Add writer</h3>
+            <form onSubmit={handleAddWriterSubmit} className="space-y-5">
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={newWriterForm.name}
+                  onChange={(e) => setNewWriterForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Jean Bosco"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Role</label>
+                <input
+                  type="text"
+                  value={newWriterForm.role}
+                  onChange={(e) => setNewWriterForm((f) => ({ ...f, role: e.target.value }))}
+                  placeholder="e.g. Senior Correspondent"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Bio</label>
+                <textarea
+                  value={newWriterForm.bio}
+                  onChange={(e) => setNewWriterForm((f) => ({ ...f, bio: e.target.value }))}
+                  placeholder="Short bio or description"
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Image URL</label>
+                <input
+                  type="url"
+                  value={newWriterForm.image}
+                  onChange={(e) => setNewWriterForm((f) => ({ ...f, image: e.target.value }))}
+                  placeholder="https://..."
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Twitter</label>
+                  <input
+                    type="text"
+                    value={newWriterForm.twitter}
+                    onChange={(e) => setNewWriterForm((f) => ({ ...f, twitter: e.target.value }))}
+                    placeholder="URL or handle"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">LinkedIn</label>
+                  <input
+                    type="text"
+                    value={newWriterForm.linkedin}
+                    onChange={(e) => setNewWriterForm((f) => ({ ...f, linkedin: e.target.value }))}
+                    placeholder="URL"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setAddWriterModalOpen(false)}
+                  disabled={addWriterSubmitting}
+                  className="flex-1 px-8 py-4 rounded-2xl text-xs font-black text-slate-400 hover:text-slate-900 uppercase tracking-widest border border-slate-200 hover:bg-slate-50 transition disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addWriterSubmitting || !newWriterForm.name.trim()}
+                  className="flex-1 bg-slate-900 text-white px-8 py-4 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 transition disabled:opacity-50"
+                >
+                  {addWriterSubmitting ? 'Adding…' : 'Add writer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

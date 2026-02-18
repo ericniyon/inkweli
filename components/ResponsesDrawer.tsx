@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { Response, User } from '../types';
+import { PLACEHOLDER_IMAGE } from '../constants';
 
 interface ResponsesDrawerProps {
   isOpen: boolean;
@@ -38,7 +39,7 @@ const ResponsesDrawer: React.FC<ResponsesDrawerProps> = ({ isOpen, onClose, resp
         <div className="p-6 border-b border-slate-100">
           <div className="bg-slate-50 rounded-2xl p-4 shadow-inner">
             <div className="flex items-center gap-3 mb-3">
-              <img src={currentUser.avatar} className="w-6 h-6 rounded-full" />
+              <img src={currentUser.avatar || PLACEHOLDER_IMAGE} className="w-6 h-6 rounded-full" alt="" />
               <span className="text-xs font-bold text-slate-900">{currentUser.name}</span>
             </div>
             <textarea 
@@ -65,7 +66,7 @@ const ResponsesDrawer: React.FC<ResponsesDrawerProps> = ({ isOpen, onClose, resp
             <div key={resp.id} className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <img src={resp.userAvatar} className="w-8 h-8 rounded-full" />
+                  <img src={resp.userAvatar || PLACEHOLDER_IMAGE} className="w-8 h-8 rounded-full" alt="" />
                   <div>
                     <p className="text-xs font-bold text-slate-900">{resp.userName}</p>
                     <p className="text-[10px] text-slate-400 font-medium">{resp.createdAt}</p>

@@ -1,7 +1,5 @@
-
-import React, { useState } from 'react';
-import { GoogleGenAI } from "@google/genai";
-import { Article } from '../types';
+import React, { useState } from "react";
+import { Article } from "../types";
 
 interface GeminiAssistantProps {
   article: Article;
@@ -11,32 +9,30 @@ const GeminiAssistant: React.FC<GeminiAssistantProps> = ({ article }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
 
   const askGemini = async (prompt: string) => {
     setLoading(true);
     setResponse(null);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const fullPrompt = `
-        Context: You are an expert analyst for a premium publishing platform called usethinkup.
-        Article Title: ${article.title}
-        Article Content: ${article.content.replace(/<[^>]*>?/gm, '')}
-        
-        Task: ${prompt}
-        
-        Keep the tone professional, insightful, and concise.
-      `;
-
-      const result = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: fullPrompt,
+      const res = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          title: article.title,
+          content: article.content,
+        }),
       });
-
-      setResponse(result.text || "I couldn't generate an answer right now.");
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = json.error || "Failed to get AI response";
+        throw new Error(res.status === 429 ? "Rate limit reached. Please try again in a minute." : msg);
+      }
+      setResponse(json.text || "I couldn't generate an answer right now.");
     } catch (error) {
       console.error("Gemini Error:", error);
-      setResponse("An error occurred while connecting to the AI assistant.");
+      setResponse(error instanceof Error ? error.message : "An error occurred while connecting to the AI assistant.");
     } finally {
       setLoading(false);
     }

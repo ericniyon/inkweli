@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { User, UserRole, SubscriptionTier } from '../types';
+import { User } from '../types';
 import Logo from './Logo';
 
 interface LoginViewProps {
@@ -13,42 +12,33 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onForgotPass
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      setError('Please provide both email and password.');
+    setError(null);
+    if (!email?.trim() || !password) {
+      setError('Please enter your email and password.');
       return;
     }
 
-    if (email === 'admin@usethinkup.com' && password === 'admin') {
-      onLogin({
-        id: 'user_admin',
-        name: 'Administrator',
-        email: email,
-        role: UserRole.ADMIN,
-        tier: SubscriptionTier.UNLIMITED,
-        articlesViewedThisMonth: []
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
       });
-    } else if (email === 'sub@usethinkup.com' && password === 'sub') {
-      onLogin({
-        id: 'user_subscriber',
-        name: 'John Doe',
-        email: email,
-        role: UserRole.SUBSCRIBER,
-        tier: SubscriptionTier.UNLIMITED,
-        articlesViewedThisMonth: []
-      });
-    } else {
-      onLogin({
-        id: 'user_' + Math.random().toString(36).substr(2, 9),
-        name: email.split('@')[0],
-        email: email,
-        role: UserRole.FREE_USER,
-        tier: SubscriptionTier.NONE,
-        articlesViewedThisMonth: []
-      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Sign in failed. Please try again.');
+        return;
+      }
+      onLogin(data as User);
+    } catch {
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -70,35 +60,42 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onForgotPass
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-7">
-          <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Email Address</label>
-            <input 
-              type="email" 
-              className="w-full bg-slate-50 border border-transparent rounded-2xl px-6 py-4.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white transition"
-              placeholder="name@example.com"
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-2">
+            <label htmlFor="login-email" className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+              Email Address
+            </label>
+            <input
+              id="login-email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
             />
           </div>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center ml-4">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Password</label>
-            </div>
-            <input 
-              type="password" 
-              className="w-full bg-slate-50 border border-transparent rounded-2xl px-6 py-4.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white transition"
-              placeholder="••••••••"
+          <div className="space-y-2">
+            <label htmlFor="login-password" className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+              Password
+            </label>
+            <input
+              id="login-password"
+              type="password"
+              autoComplete="current-password"
+              placeholder="Enter your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
             />
           </div>
 
-          <button 
+          <button
             type="submit"
-            className="w-full bg-slate-900 text-white text-xs font-black py-5 rounded-3xl tracking-[0.2em] uppercase hover:bg-indigo-600 transition-all shadow-xl mt-4"
+            disabled={loading}
+            className="w-full bg-slate-900 text-white text-xs font-black py-5 rounded-3xl tracking-[0.2em] uppercase hover:bg-indigo-600 transition-all shadow-xl mt-4 disabled:opacity-60 disabled:pointer-events-none"
           >
-            Sign In
+            {loading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
 

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { MOCK_ARTICLES } from '../constants';
+import { MOCK_ARTICLES, PLACEHOLDER_IMAGE } from '../constants';
 import { Article } from '../types';
 
 interface ArchiveViewProps {
@@ -65,7 +65,7 @@ const ArchiveView: React.FC<ArchiveViewProps> = ({ onArticleClick }) => {
               <div className="w-full md:w-64 flex-shrink-0">
                 <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4">{article.publishDate}</p>
                 <div className="aspect-[4/3] rounded-2xl overflow-hidden shadow-md">
-                   <img src={article.featuredImage} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                   <img src={article.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
                 </div>
               </div>
               <div className="flex-grow pt-2">

@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { User, Article, Category } from '../types';
+import { PLACEHOLDER_IMAGE } from '../constants';
 
 interface StoryEditorProps {
   currentUser: User;
@@ -47,7 +48,7 @@ const StoryEditor: React.FC<StoryEditorProps> = ({ currentUser, onSave, onCancel
       <header className="flex justify-between items-center mb-16">
          <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-slate-100 overflow-hidden">
-               <img src={currentUser.avatar} className="w-full h-full object-cover" />
+               <img src={currentUser.avatar || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt="" />
             </div>
             <span className="text-sm font-medium text-slate-500 italic">Draft in {currentUser.name}</span>
          </div>

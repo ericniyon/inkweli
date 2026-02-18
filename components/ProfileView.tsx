@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { User, Article } from '../types';
+import { PLACEHOLDER_IMAGE } from '../constants';
 
 interface ProfileViewProps {
   user: User;
@@ -20,7 +21,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, articles, onArticleClic
               {isGuest ? (
                 <svg className="w-12 h-12 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeWidth="2" /></svg>
               ) : (
-                <img src={user.avatar} className="w-full h-full object-cover" />
+                <img src={user.avatar || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt="" />
               )}
            </div>
            <div className="text-center sm:text-left flex-1">
@@ -53,7 +54,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, articles, onArticleClic
           {articles.length > 0 ? articles.map(article => (
             <div key={article.id} className="group cursor-pointer" onClick={() => onArticleClick(article)}>
               <div className="flex items-center gap-2 mb-3">
-                  <img src={article.authorAvatar} className="w-5 h-5 rounded-full" />
+                  <img src={article.authorAvatar || PLACEHOLDER_IMAGE} className="w-5 h-5 rounded-full" alt="" />
                   <span className="text-[10px] font-bold text-slate-900">{article.authorName}</span>
                   <span className="text-slate-300">•</span>
                   <span className="text-[10px] text-slate-400 uppercase">{article.publishDate}</span>
@@ -69,7 +70,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, articles, onArticleClic
                 </div>
                 {article.featuredImage && (
                   <div className="w-full md:w-32 h-24 rounded overflow-hidden bg-slate-100 flex-shrink-0">
-                    <img src={article.featuredImage} className="w-full h-full object-cover" />
+                    <img src={article.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt="" />
                   </div>
                 )}
               </div>

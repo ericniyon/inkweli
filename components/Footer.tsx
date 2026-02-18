@@ -1,7 +1,12 @@
+"use client";
 
-import React from 'react';
+import React from "react";
+import { useSiteLayout } from "@/lib/site-layout-context";
 
 const Footer: React.FC = () => {
+  const { showFooter } = useSiteLayout();
+  if (!showFooter) return null;
+
   const links = [
     'Help',
     'Status',
@@ -23,7 +28,6 @@ const Footer: React.FC = () => {
               key={link}
               href="#"
               className="text-[13px] font-medium text-slate-500 hover:text-slate-900 transition-colors duration-200"
-              onClick={(e) => e.preventDefault()}
             >
               {link}
             </a>

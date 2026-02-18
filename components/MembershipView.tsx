@@ -1,5 +1,5 @@
-
 import React from 'react';
+import { SUBSCRIPTION_PLANS } from '@/constants';
 
 interface MembershipViewProps {
   onGetStarted: () => void;
@@ -68,46 +68,56 @@ const MembershipView: React.FC<MembershipViewProps> = ({ onGetStarted }) => {
         </div>
       </section>
 
-      {/* Membership Tiers / Features */}
+      {/* Membership Tiers / Features — RWF pricing */}
       <section className="py-32 px-6 bg-slate-50">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-20">
             <h2 className="text-4xl md:text-6xl font-black mb-6 tracking-tight">Two ways to support stories.</h2>
+            <p className="text-slate-600 font-medium">Prices in Rwandan Francs (RWF)</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Tier 1 */}
-            <div className="bg-white p-12 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col">
-              <h3 className="text-2xl font-black mb-2">usethinkup Member</h3>
-              <p className="text-slate-500 mb-8 font-medium">Read more. Support writers.</p>
-              <div className="text-4xl font-black mb-8">$5<span className="text-lg text-slate-400 font-bold">/month</span></div>
-              <ul className="space-y-4 mb-12 flex-grow">
-                {['Unlimited reading', 'Ad-free experience', 'Support the writers you read', 'Read offline', 'Bonus subscriber-only content'].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-slate-700 font-medium">
-                    <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <button onClick={onGetStarted} className="w-full bg-slate-900 text-white py-4 rounded-full font-bold hover:bg-slate-800 transition">Get started</button>
-            </div>
-
-            {/* Tier 2 */}
-            <div className="bg-white p-12 rounded-[2.5rem] border-2 border-indigo-600 shadow-xl flex flex-col relative overflow-hidden">
-              <div className="absolute top-0 right-0 bg-indigo-600 text-white px-4 py-1 text-[10px] font-black uppercase tracking-widest rounded-bl-xl">Best Value</div>
-              <h3 className="text-2xl font-black mb-2">Friend of usethinkup</h3>
-              <p className="text-slate-500 mb-8 font-medium">Extra support. Extra impact.</p>
-              <div className="text-4xl font-black mb-8">$15<span className="text-lg text-slate-400 font-bold">/month</span></div>
-              <ul className="space-y-4 mb-12 flex-grow">
-                {['All Member benefits', 'Give 4x more to writers', 'Early access to new features', 'Exclusive Friend badge', 'The warm glow of altruism'].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-slate-700 font-medium">
-                    <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <button onClick={onGetStarted} className="w-full bg-indigo-600 text-white py-4 rounded-full font-bold hover:bg-indigo-700 transition">Get started</button>
-            </div>
+            {SUBSCRIPTION_PLANS.map((plan, index) => {
+              const isPro = plan.id === 'plan_pro';
+              return (
+                <div
+                  key={plan.id}
+                  className={`bg-white p-12 rounded-[2.5rem] flex flex-col relative overflow-hidden ${
+                    isPro ? 'border-2 border-indigo-600 shadow-xl' : 'border border-slate-200 shadow-sm'
+                  }`}
+                >
+                  {isPro && (
+                    <div className="absolute top-0 right-0 bg-indigo-600 text-white px-4 py-1 text-[10px] font-black uppercase tracking-widest rounded-bl-xl">
+                      Best Value
+                    </div>
+                  )}
+                  <h3 className="text-2xl font-black mb-2">{plan.name}</h3>
+                  <p className="text-slate-500 mb-8 font-medium">
+                    {index === 0 ? 'Get started. Support writers.' : 'More stories. Extra impact.'}
+                  </p>
+                  <div className="text-4xl font-black mb-8">
+                    {new Intl.NumberFormat('en-RW').format(plan.price)}
+                    <span className="text-lg text-slate-400 font-bold"> RWF/{plan.interval}</span>
+                  </div>
+                  <ul className="space-y-4 mb-12 flex-grow">
+                    {plan.features.map((item, i) => (
+                      <li key={i} className="flex items-center gap-3 text-slate-700 font-medium">
+                        <svg className="w-5 h-5 text-indigo-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    onClick={onGetStarted}
+                    className={`w-full py-4 rounded-full font-bold transition ${
+                      isPro ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-900 text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    Get started
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>

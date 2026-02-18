@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
+import { PLACEHOLDER_IMAGE } from '../constants';
 
 interface HighlightDrawerProps {
   isOpen: boolean;
@@ -8,9 +9,12 @@ interface HighlightDrawerProps {
   selectedText: string;
   onSave: (comment: string) => void;
   currentUser: User;
+  isSaving?: boolean;
+  isGuest?: boolean;
+  onLoginClick?: () => void;
 }
 
-const HighlightDrawer: React.FC<HighlightDrawerProps> = ({ isOpen, onClose, selectedText, onSave, currentUser }) => {
+const HighlightDrawer: React.FC<HighlightDrawerProps> = ({ isOpen, onClose, selectedText, onSave, currentUser, isSaving = false, isGuest = false, onLoginClick }) => {
   const [comment, setComment] = useState('');
 
   useEffect(() => {
@@ -48,6 +52,20 @@ const HighlightDrawer: React.FC<HighlightDrawerProps> = ({ isOpen, onClose, sele
         </header>
 
         <div className="flex-grow overflow-y-auto px-10 py-10 no-scrollbar space-y-12">
+          {isGuest && onLoginClick && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6">
+              <p className="text-sm font-bold text-amber-900 mb-3">Sign in to save your note</p>
+              <p className="text-xs text-amber-800/80 mb-4">Your annotation will be saved and visible to other readers once you sign in.</p>
+              <button
+                type="button"
+                onClick={onLoginClick}
+                className="px-5 py-2.5 rounded-full bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 transition-colors"
+              >
+                Sign in to save
+              </button>
+            </div>
+          )}
+
           {/* Quote Section */}
           <div className="space-y-4">
              <div className="flex items-center gap-2">
@@ -63,7 +81,7 @@ const HighlightDrawer: React.FC<HighlightDrawerProps> = ({ isOpen, onClose, sele
           <div className="space-y-6">
             <div className="flex items-center justify-between">
                <div className="flex items-center gap-3">
-                 <img src={currentUser.avatar} className="w-8 h-8 rounded-full ring-2 ring-slate-100 ring-offset-2" alt={currentUser.name} />
+                 <img src={currentUser.avatar || PLACEHOLDER_IMAGE} className="w-8 h-8 rounded-full ring-2 ring-slate-100 ring-offset-2" alt={currentUser.name} />
                  <span className="text-xs font-bold text-slate-900">{currentUser.name}</span>
                </div>
                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">usethinkup Contributor</span>
@@ -103,11 +121,11 @@ const HighlightDrawer: React.FC<HighlightDrawerProps> = ({ isOpen, onClose, sele
                 Cancel
               </button>
               <button 
-                onClick={handleSave}
-                disabled={!comment.trim()}
+                onClick={isGuest && onLoginClick ? onLoginClick : handleSave}
+                disabled={isGuest ? false : !comment.trim() || isSaving}
                 className="bg-slate-900 text-white px-10 py-3 rounded-full text-xs font-black uppercase tracking-[0.2em] hover:bg-indigo-600 transition-all disabled:opacity-30 shadow-xl shadow-slate-100"
               >
-                Save Note
+                {isGuest ? 'Sign in to save' : isSaving ? 'Saving…' : 'Save Note'}
               </button>
            </div>
         </footer>

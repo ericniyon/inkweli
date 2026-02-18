@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { User, UserRole, SubscriptionTier } from '../types';
+import { User } from '../types';
 
 interface RegisterViewProps {
   onRegister: (user: User) => void;
@@ -13,22 +12,42 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onRegister, onLogin }) => {
   const [password, setPassword] = useState('');
   const [newsletter, setNewsletter] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !password) {
+    setError(null);
+    if (!name?.trim() || !email?.trim() || !password) {
       setError('All fields are required.');
       return;
     }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
 
-    onRegister({
-      id: 'user_' + Math.random().toString(36).substr(2, 9),
-      name: name,
-      email: email,
-      role: UserRole.FREE_USER,
-      tier: SubscriptionTier.NONE,
-      articlesViewedThisMonth: []
-    });
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          password,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Registration failed. Please try again.');
+        return;
+      }
+      onRegister(data as User);
+    } catch {
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -94,9 +113,10 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onRegister, onLogin }) => {
 
           <button 
             type="submit"
-            className="w-full bg-slate-900 text-white text-xs font-black py-5 rounded-3xl tracking-[0.2em] uppercase hover:bg-indigo-600 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-slate-200 mt-4"
+            disabled={loading}
+            className="w-full bg-slate-900 text-white text-xs font-black py-5 rounded-3xl tracking-[0.2em] uppercase hover:bg-indigo-600 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-slate-200 mt-4 disabled:opacity-60 disabled:pointer-events-none"
           >
-            Create Account
+            {loading ? 'Creating account…' : 'Create Account'}
           </button>
         </form>
 

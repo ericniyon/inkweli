@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { WRITERS } from '../constants';
+import { WRITERS, PLACEHOLDER_IMAGE } from '../constants';
 
 const WritersView: React.FC = () => {
   return (
@@ -15,7 +15,7 @@ const WritersView: React.FC = () => {
           <div key={i} className="group relative animate-fade-up" style={{ animationDelay: `${i * 100}ms` }}>
             <div className="mb-8 relative">
               <div className="aspect-square rounded-[3rem] overflow-hidden bg-slate-100 border border-slate-100 shadow-xl relative z-10">
-                <img src={writer.image} alt={writer.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                <img src={writer.image || PLACEHOLDER_IMAGE} alt={writer.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
               </div>
               <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-indigo-600 rounded-[2rem] -z-0 opacity-10 group-hover:opacity-100 transition-opacity" />
             </div>

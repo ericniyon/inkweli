@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { Article } from '../types';
+import { PLACEHOLDER_IMAGE } from '../constants';
 
 interface LibraryViewProps {
   bookmarks: Article[];
@@ -43,7 +44,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({ bookmarks, onArticleClick }) 
                 <div className="flex -space-x-4">
                    {bookmarks.slice(0, 3).map((art, i) => (
                       <div key={art.id} className="w-12 h-12 rounded-lg overflow-hidden border-2 border-white shadow-sm" style={{ zIndex: 3 - i }}>
-                         <img src={art.featuredImage} className="w-full h-full object-cover" />
+                         <img src={art.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt="" />
                       </div>
                    ))}
                 </div>
@@ -54,13 +55,13 @@ const LibraryView: React.FC<LibraryViewProps> = ({ bookmarks, onArticleClick }) 
                    <div key={article.id} onClick={(e) => { e.stopPropagation(); onArticleClick(article); }} className="flex gap-6 group/item">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <img src={article.authorAvatar} className="w-4 h-4 rounded-full" />
+                          <img src={article.authorAvatar || PLACEHOLDER_IMAGE} className="w-4 h-4 rounded-full" alt="" />
                           <span className="text-[10px] font-bold text-slate-900">{article.authorName}</span>
                         </div>
                         <h3 className="text-base font-black text-slate-900 leading-tight group-hover/item:text-slate-600 transition-colors line-clamp-2">{article.title}</h3>
                       </div>
                       <div className="w-16 h-12 rounded bg-slate-200 overflow-hidden flex-shrink-0">
-                         <img src={article.featuredImage} className="w-full h-full object-cover" />
+                         <img src={article.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt="" />
                       </div>
                    </div>
                 ))}
@@ -89,7 +90,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({ bookmarks, onArticleClick }) 
            {bookmarks.slice(0, 2).map(article => (
               <div key={article.id} onClick={() => onArticleClick(article)} className="flex items-center gap-4 cursor-pointer group">
                  <div className="w-12 h-12 bg-slate-100 rounded overflow-hidden">
-                    <img src={article.featuredImage} className="w-full h-full object-cover" />
+                    <img src={article.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt="" />
                  </div>
                  <div className="flex-1">
                     <h4 className="text-sm font-black text-slate-900 line-clamp-1 group-hover:underline">{article.title}</h4>

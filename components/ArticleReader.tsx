@@ -1,10 +1,30 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { Article, Highlight, User, Response, SubscriptionTier } from '../types';
-import { GoogleGenAI, Modality } from "@google/genai";
+import { PLACEHOLDER_IMAGE } from '../constants';
 import GeminiAssistant from './GeminiAssistant';
 import ResponsesDrawer from './ResponsesDrawer';
 import HighlightDrawer from './HighlightDrawer';
+
+/** Returns the first paragraph of HTML content for teaser / paywall */
+function getFirstParagraphHtml(html: string): string {
+  const match = html.match(/<p>([\s\S]*?)<\/p>/i);
+  if (match) return `<p>${match[1]}</p>`;
+  return html.slice(0, 600) || html;
+}
+
+/** Decode common HTML entities so highlight plain text can match content */
+function decodeHtmlEntities(html: string): string {
+  return html
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)));
+}
 
 interface ArticleReaderProps {
   article: Article;
@@ -16,6 +36,10 @@ interface ArticleReaderProps {
   onToggleBookmark: () => void;
   isFollowing: boolean;
   onToggleFollow: () => void;
+  /** When true, only first paragraph is shown and login overlay is displayed */
+  isGuest?: boolean;
+  /** Called when guest taps "Sign in" or "Get started" to continue reading */
+  onLoginClick?: () => void;
 }
 
 // Audio Decoding Helpers
@@ -57,9 +81,12 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
   isBookmarked,
   onToggleBookmark,
   isFollowing,
-  onToggleFollow
+  onToggleFollow,
+  isGuest = false,
+  onLoginClick,
 }) => {
   const [claps, setClaps] = useState(article.claps);
+  const [hasClapped, setHasClapped] = useState(article.hasClapped ?? false);
   const [progress, setProgress] = useState(0);
   const [isResponsesOpen, setIsResponsesOpen] = useState(false);
   const [isHighlightDrawerOpen, setIsHighlightDrawerOpen] = useState(false);
@@ -67,7 +94,14 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
   const [responses, setResponses] = useState<Response[]>(article.responses || []);
   const [highlights, setHighlights] = useState<Highlight[]>(article.highlights || []);
   const [selectionRange, setSelectionRange] = useState<{ rect: DOMRect, text: string } | null>(null);
-  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
+  const [activeHighlightIds, setActiveHighlightIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setHighlights(article.highlights || []);
+    setActiveHighlightIds([]);
+    setClaps(article.claps);
+    setHasClapped(article.hasClapped ?? false);
+  }, [article.id, article.claps, article.hasClapped]);
   
   // Audio State
   const [isAudioLoading, setIsAudioLoading] = useState(false);
@@ -94,27 +128,20 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
 
   useEffect(() => {
     const handleMouseUp = (e: MouseEvent) => {
-      // Small timeout to allow selection to finalize
-      setTimeout(() => {
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          const text = selection.toString().trim();
-          
-          if (text.length > 3 && contentRef.current?.contains(range.commonAncestorContainer)) {
-            const rect = range.getBoundingClientRect();
-            setSelectionRange({ rect, text });
-            // AUTOMATICALLY open the drawer instead of showing the popover
-            setIsHighlightDrawerOpen(true);
-          } else {
-            const target = e.target as HTMLElement;
-            // Only clear if we didn't click a trigger or the drawer itself
-            if (!target.closest('.highlight-trigger') && !target.closest('.p-comment-trigger') && !isHighlightDrawerOpen) {
-              setSelectionRange(null);
-            }
-          }
-        }
-      }, 50);
+      const target = e.target as HTMLElement;
+      const selection = window.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+      const text = selection?.toString().trim() ?? '';
+      const isInContent = range && contentRef.current?.contains(range.commonAncestorContainer);
+      const isClickOnTrigger = target.closest('.highlight-trigger') || target.closest('.p-comment-trigger') || target.closest('[data-selection-toolbar]');
+
+      if (text.length > 3 && isInContent) {
+        const rect = range!.getBoundingClientRect();
+        setSelectionRange({ rect, text });
+      } else if (!isClickOnTrigger && !isHighlightDrawerOpen) {
+        setSelectionRange(null);
+        setActiveHighlightIds([]);
+      }
     };
 
     document.addEventListener('mouseup', handleMouseUp);
@@ -139,24 +166,15 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
 
     setIsAudioLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const plainText = article.content.replace(/<[^>]*>?/gm, '');
-      const prompt = `Read this article in a calm, professional tone: ${article.title}. ${plainText}`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Kore' },
-            },
-          },
-        },
+      const res = await fetch('/api/read-aloud', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: article.title, content: article.content }),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Failed to generate audio');
 
-      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      const base64Audio = json.data;
       if (base64Audio) {
         if (!audioContextRef.current) {
           audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -187,51 +205,132 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
     }
   };
 
-  const handleClap = () => setClaps(prev => prev + 1);
-
-  const handlePostResponse = (text: string) => {
-    const newResponse: Response = {
-      id: Math.random().toString(36).substr(2, 9),
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userAvatar: currentUser.avatar,
-      text: text,
-      createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      claps: 0
-    };
-    setResponses([newResponse, ...responses]);
+  const handleClap = async () => {
+    if (isGuest) {
+      onLoginClick?.();
+      return;
+    }
+    if (hasClapped) return; // Already clapped, prevent double-clap
+    try {
+      const res = await fetch(`/api/articles/${article.id}/clap`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to clap');
+      setClaps(data.claps ?? claps + 1);
+      setHasClapped(data.clapped ?? true);
+    } catch (err) {
+      console.error('Clap error:', err);
+      alert(err instanceof Error ? err.message : 'Failed to clap article.');
+    }
   };
 
-  const handleAddHighlight = (comment: string) => {
+  const handlePostResponse = async (text: string) => {
+    if (isGuest) {
+      onLoginClick?.();
+      return;
+    }
+    try {
+      const res = await fetch(`/api/articles/${article.id}/responses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, text: text.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to post response');
+      const created: Response = {
+        id: data.id,
+        userId: data.userId,
+        userName: data.userName,
+        userAvatar: data.userAvatar,
+        text: data.text,
+        createdAt: data.createdAt ? new Date(data.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        claps: data.claps ?? 0,
+      };
+      setResponses([created, ...responses]);
+    } catch (err) {
+      console.error('Post response error:', err);
+      alert(err instanceof Error ? err.message : 'Failed to post response.');
+    }
+  };
+
+  const handleShare = async () => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const title = article.title;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share({ title, url });
+        return;
+      }
+      await navigator.clipboard?.writeText(url);
+      alert('Link copied to clipboard.');
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
+      try {
+        await navigator.clipboard?.writeText(url);
+        alert('Link copied to clipboard.');
+      } catch {
+        alert('Could not share or copy link.');
+      }
+    }
+  };
+
+  const [isSavingHighlight, setIsSavingHighlight] = useState(false);
+
+  const handleAddHighlight = async (comment: string) => {
     if (!selectionRange) return;
-    
-    const newHighlight: Highlight = {
-      id: Math.random().toString(36).substr(2, 9),
-      articleId: article.id,
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userAvatar: currentUser.avatar,
-      text: selectionRange.text,
-      comment: comment,
-      createdAt: new Date().toISOString()
-    };
-    
-    setHighlights([...highlights, newHighlight]);
-    setSelectionRange(null);
-    setIsHighlightDrawerOpen(false);
-    window.getSelection()?.removeAllRanges();
+    setIsSavingHighlight(true);
+    try {
+      const res = await fetch(`/api/articles/${article.id}/highlights`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: selectionRange.text,
+          comment: comment.trim(),
+          userId: currentUser.id,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to save note');
+      }
+      const saved: Highlight = await res.json();
+      setHighlights((prev) => [...prev, saved]);
+      setSelectionRange(null);
+      setIsHighlightDrawerOpen(false);
+      window.getSelection()?.removeAllRanges();
+    } catch (err) {
+      console.error('Save highlight error:', err);
+      alert(err instanceof Error ? err.message : 'Failed to save note. Please try again.');
+    } finally {
+      setIsSavingHighlight(false);
+    }
   };
 
   const highlightedContent = useMemo(() => {
-    let content = article.content;
-    
-    // 1. Process Highlights
-    const sorted = [...highlights].sort((a, b) => b.text.length - a.text.length);
-    sorted.forEach(h => {
-      const escapedText = h.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(escapedText, 'g');
-      content = content.replace(regex, 
-        `<span class="highlight-trigger bg-emerald-100/50 border-b-2 border-emerald-400/30 cursor-pointer transition-all hover:bg-emerald-200" data-highlight-id="${h.id}">${h.text}</span>`
+    let content = isGuest ? getFirstParagraphHtml(article.content) : article.content;
+    content = decodeHtmlEntities(content);
+
+    // 1. Process Highlights: group by normalized text; match in decoded HTML with flexible whitespace
+    const normalize = (t: string) => t.trim().replace(/\s+/g, ' ');
+    const byText = new Map<string, Highlight[]>();
+    highlights.forEach(h => {
+      const key = normalize(h.text);
+      if (!key) return;
+      if (!byText.has(key)) byText.set(key, []);
+      byText.get(key)!.push(h);
+    });
+    // Longest first so we don't wrap inner phrases and break the outer span
+    const sortedEntries = [...byText.entries()].sort((a, b) => b[0].length - a[0].length);
+    const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    sortedEntries.forEach(([text, group]) => {
+      const pattern = text.split(/\s+/).map(escapeRegex).join('\\s+');
+      const regex = new RegExp(pattern, 'i');
+      const ids = group.map(h => h.id).join(',');
+      content = content.replace(regex, (match) =>
+        `<span class="highlight-trigger bg-[#dcfce7] border-b-2 border-green-400/60 cursor-pointer transition-all hover:bg-[#bbf7d0] rounded-sm px-0.5" data-highlight-ids="${ids}">${match}</span>`
       );
     });
 
@@ -244,12 +343,12 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
       </button>
     `;
 
-    content = content.replace(/<p>(.*?)<\/p>/gs, (match, p1) => {
+    content = content.replace(/<p>([\s\S]*?)<\/p>/g, (_match, p1) => {
       return `<p class="paragraph-target">${p1}${pCommentIcon}</p>`;
     });
     
     return content;
-  }, [article.content, highlights]);
+  }, [article.content, highlights, isGuest]);
 
   const handleContentClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -257,6 +356,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
     const highlightTrigger = target.closest('.highlight-trigger');
 
     if (triggerBtn) {
+      e.preventDefault();
       const parentP = triggerBtn.closest('p');
       if (parentP) {
         const pText = parentP.innerText.replace(/[\n\r]/g, ' ').trim();
@@ -268,16 +368,17 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
     }
 
     if (highlightTrigger) {
-      const hId = highlightTrigger.getAttribute('data-highlight-id');
-      setActiveHighlightId(hId);
+      e.preventDefault();
+      const idsStr = highlightTrigger.getAttribute('data-highlight-ids');
+      setActiveHighlightIds(idsStr ? idsStr.split(',').filter(Boolean) : []);
     } else {
-      setActiveHighlightId(null);
+      setActiveHighlightIds([]);
     }
   };
 
-  const activeHighlight = useMemo(() => 
-    highlights.find(h => h.id === activeHighlightId), 
-  [highlights, activeHighlightId]);
+  const activeHighlights = useMemo(() => 
+    activeHighlightIds.map(id => highlights.find(h => h.id === id)).filter(Boolean) as Highlight[], 
+  [highlights, activeHighlightIds]);
 
   const moreFromAuthor = useMemo(() => 
     allArticles.filter(a => a.authorId === article.authorId && a.id !== article.id).slice(0, 3),
@@ -293,7 +394,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
         <div className="h-full bg-slate-900 transition-all duration-100" style={{ width: `${progress}%` }} />
       </div>
 
-      <article className="max-w-screen-md mx-auto px-6 pt-16">
+      <article className="w-full max-w-screen-md mx-auto px-4 sm:px-6 md:px-8 pt-12 md:pt-16">
         <header className="mb-12">
           <div className="flex items-center gap-2 mb-8">
             <svg className="w-4 h-4 text-yellow-500 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
@@ -311,7 +412,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
           <div className="flex items-center justify-between py-6 border-y border-slate-100 mb-12">
              <div className="flex items-center gap-4">
                 <button onClick={() => onAuthorClick(article.authorId)} className="w-12 h-12 rounded-full overflow-hidden border border-slate-100 transition-transform hover:scale-105 active:scale-95">
-                   <img src={article.authorAvatar} className="w-full h-full object-cover" />
+                   <img src={article.authorAvatar || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt="" />
                 </button>
                 <div className="text-left">
                    <div className="flex items-center gap-3">
@@ -352,25 +453,109 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
           </div>
         </header>
 
-        <div className="mb-12 -mx-4 md:-mx-12 lg:-mx-20 rounded-xl overflow-hidden shadow-2xl bg-slate-100">
-          <img src={article.featuredImage} className="w-full h-full object-cover max-h-[500px]" />
+        <div className="mb-12 -mx-4 md:-mx-6 lg:-mx-12 rounded-xl overflow-hidden shadow-2xl bg-slate-100">
+          <img src={article.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover max-h-[400px] md:max-h-[500px]" alt="" />
         </div>
 
-        <div 
-          ref={contentRef}
-          onClick={handleContentClick}
-          className="article-content prose prose-slate prose-xl max-w-none text-slate-800 Charter mb-32 leading-[1.8] selection:bg-emerald-100/60"
-          dangerouslySetInnerHTML={{ __html: highlightedContent }}
-        />
+        <div className="relative">
+          {/* Floating toolbar when text is selected */}
+          {selectionRange && !isHighlightDrawerOpen && (
+            <div
+              data-selection-toolbar
+              className="fixed z-[150] flex items-center gap-1 bg-slate-900 text-white rounded-xl shadow-lg border border-slate-700 py-2 px-2 animate-in fade-in zoom-in-95 duration-200"
+              style={{
+                top: selectionRange.rect.top - 52,
+                left: Math.max(12, Math.min(window.innerWidth - 224, selectionRange.rect.left + selectionRange.rect.width / 2 - 112)),
+                transform: 'translateY(-100%)',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setIsHighlightDrawerOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-slate-900 text-sm font-bold hover:bg-slate-100 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Add note
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectionRange(null);
+                  window.getSelection()?.removeAllRanges();
+                }}
+                className="px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          <div 
+            ref={contentRef}
+            onClick={handleContentClick}
+            className="article-content text-slate-800 Charter leading-[1.8] selection:bg-emerald-100/60"
+            style={isGuest ? { marginBottom: 0 } : undefined}
+            dangerouslySetInnerHTML={{ __html: highlightedContent }}
+          />
+          {isGuest && onLoginClick && (
+            <div className="mt-8 rounded-2xl border border-slate-100 bg-slate-50/80 backdrop-blur-sm p-8 md:p-10 text-center shadow-lg">
+              <div className="max-w-md mx-auto space-y-6">
+                <h3 className="text-xl font-black text-slate-900 tracking-tight">Continue reading</h3>
+                <p className="text-slate-600 Charter leading-relaxed">
+                  Sign in or create an account to read the full story and join the conversation.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <button
+                    type="button"
+                    onClick={onLoginClick}
+                    className="px-6 py-3 rounded-full bg-slate-900 text-white text-sm font-bold hover:bg-slate-800 transition"
+                  >
+                    Sign in
+                  </button>
+                  <Link
+                    href="/register"
+                    className="px-6 py-3 rounded-full border-2 border-slate-900 text-slate-900 text-sm font-bold hover:bg-slate-50 transition text-center"
+                  >
+                    Get started
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {!isGuest && <div className="mb-32" />}
 
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/90 backdrop-blur-md border border-slate-100 shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-full px-8 py-3.5 flex items-center justify-between z-50 animate-fade-up">
            <div className="flex items-center gap-8">
-              <button onClick={handleClap} className="group flex items-center gap-2 text-slate-400 hover:text-slate-900 transition">
-                 <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 10h4.757c1.246 0 2.257 1.01 2.257 2.257 0 .307-.061.611-.182.894l-2.9 6.767c-.271.633-.893 1.039-1.58 1.039H8.435c-.943 0-1.706-.763-1.706-1.706V10.706c0-.452.18-.886.5-1.206l5.206-5.206a1.706 1.706 0 012.413 2.413L14 10zM6.729 10H4.413C3.47 10 2.706 10.763 2.706 11.706v7.588c0 .943.763 1.706 1.706 1.706h2.318" strokeWidth="2"/></svg>
-                 <span className="text-sm font-bold tracking-tight">{claps.toLocaleString()}</span>
+              <button
+                type="button"
+                onClick={handleClap}
+                disabled={hasClapped || isGuest}
+                className={`group flex items-center gap-2 transition ${
+                  hasClapped
+                    ? 'text-emerald-600 cursor-default'
+                    : isGuest
+                    ? 'text-slate-400 cursor-not-allowed'
+                    : 'text-slate-400 hover:text-slate-900'
+                }`}
+                aria-label={hasClapped ? 'You clapped this article' : 'Clap this article'}
+              >
+                <svg
+                  className={`w-6 h-6 transition-transform ${hasClapped ? '' : 'group-hover:scale-110'}`}
+                  fill={hasClapped ? 'currentColor' : 'none'}
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M14 10h4.757c1.246 0 2.257 1.01 2.257 2.257 0 .307-.061.611-.182.894l-2.9 6.767c-.271.633-.893 1.039-1.58 1.039H8.435c-.943 0-1.706-.763-1.706-1.706V10.706c0-.452.18-.886.5-1.206l5.206-5.206a1.706 1.706 0 012.413 2.413L14 10zM6.729 10H4.413C3.47 10 2.706 10.763 2.706 11.706v7.588c0 .943.763 1.706 1.706 1.706h2.318" strokeWidth="2" />
+                </svg>
+                <span className="text-sm font-bold tracking-tight">{claps.toLocaleString()}</span>
               </button>
-              <button 
-                onClick={() => setIsResponsesOpen(true)}
+              <button
+                type="button"
+                onClick={() => (isGuest ? onLoginClick?.() : setIsResponsesOpen(true))}
                 className="group flex items-center gap-2 text-slate-400 hover:text-slate-900 transition"
               >
                  <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" strokeWidth="2"/></svg>
@@ -378,13 +563,15 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
               </button>
            </div>
            <div className="flex items-center gap-8">
-              <button 
+              <button
+                type="button"
                 onClick={onToggleBookmark}
                 className={`transition group ${isBookmarked ? 'text-emerald-500' : 'text-slate-400 hover:text-slate-900'}`}
+                aria-label={isBookmarked ? 'Remove bookmark' : 'Bookmark'}
               >
                 <svg className={`w-6 h-6 group-hover:scale-110 transition-transform ${isBookmarked ? 'fill-current' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" strokeWidth="2"/></svg>
               </button>
-              <button className="text-slate-400 hover:text-slate-900 transition group">
+              <button type="button" onClick={handleShare} className="text-slate-400 hover:text-slate-900 transition group" aria-label="Share">
                 <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" strokeWidth="2"/></svg>
               </button>
            </div>
@@ -406,7 +593,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
                  {moreFromAuthor.map(art => (
                    <div key={art.id} className="group cursor-pointer" onClick={() => onArticleClick(art)}>
                       <div className="aspect-video rounded-2xl overflow-hidden mb-4 border border-slate-100 bg-slate-200 shadow-sm">
-                        <img src={art.featuredImage} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <img src={art.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
                       </div>
                       <h3 className="text-lg font-black text-slate-900 leading-tight mb-2 Charter group-hover:text-indigo-600 transition-colors line-clamp-2">{art.title}</h3>
                       <div className="flex items-center gap-3 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
@@ -431,11 +618,11 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
                  {moreFromCategory.map(art => (
                    <div key={art.id} className="flex gap-6 group cursor-pointer" onClick={() => onArticleClick(art)}>
                       <div className="w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 border border-slate-100 bg-slate-200">
-                         <img src={art.featuredImage} className="w-full h-full object-cover" />
+                         <img src={art.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt="" />
                       </div>
                       <div className="flex-grow py-1">
                          <div className="flex items-center gap-2 mb-2">
-                           <img src={art.authorAvatar} className="w-4 h-4 rounded-full" />
+                           <img src={art.authorAvatar || PLACEHOLDER_IMAGE} className="w-4 h-4 rounded-full" alt="" />
                            <span className="text-[10px] font-bold text-slate-900">{art.authorName}</span>
                          </div>
                          <h3 className="text-lg font-black text-slate-900 leading-tight Charter group-hover:text-indigo-600 transition-colors line-clamp-2">{art.title}</h3>
@@ -450,7 +637,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
         </div>
       </section>
 
-      {/* Highlight Side Drawer for context-aware commenting */}
+      {/* Highlight Side Drawer: comment on selected text */}
       <HighlightDrawer 
         isOpen={isHighlightDrawerOpen}
         onClose={() => {
@@ -461,40 +648,64 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
         selectedText={selectionRange?.text || ''}
         onSave={handleAddHighlight}
         currentUser={currentUser}
+        isSaving={isSavingHighlight}
+        isGuest={isGuest}
+        onLoginClick={onLoginClick}
       />
 
-      {activeHighlight && (
-        <div 
-          className="fixed z-[120] bg-white border border-slate-200 shadow-[0_20px_60px_rgba(0,0,0,0.18)] p-6 rounded-2xl w-80 animate-in fade-in zoom-in-95 duration-200"
-          style={{ 
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)'
-          }}
-        >
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-9 h-9 rounded-full bg-slate-100 overflow-hidden ring-1 ring-slate-100 ring-offset-2">
-              <img src={activeHighlight.userAvatar} className="w-full h-full object-cover" />
+      {/* Community notes side drawer */}
+      {activeHighlights.length > 0 && (
+        <div className="fixed inset-0 z-[120] flex justify-end">
+          <div
+            className="absolute inset-0 bg-slate-900/10 backdrop-blur-[2px] animate-in fade-in duration-200"
+            onClick={() => setActiveHighlightIds([])}
+            aria-hidden
+          />
+          <div className="relative w-full max-w-lg bg-white h-full shadow-[0_0_80px_rgba(0,0,0,0.08)] flex flex-col animate-in slide-in-from-right duration-300 ease-out border-l border-slate-100">
+            <header className="px-8 py-6 flex justify-between items-center border-b border-slate-100 bg-white shrink-0">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">Community notes</h2>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                  {activeHighlights.length} {activeHighlights.length === 1 ? 'note' : 'notes'} on this passage
+                </p>
+              </div>
+              <button
+                onClick={() => setActiveHighlightIds([])}
+                className="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+                aria-label="Close"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </header>
+            <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
+              <div className="bg-green-50 border-l-4 border-green-400 p-5 rounded-r-xl">
+                <p className="text-[10px] font-bold text-green-800 uppercase tracking-wider mb-2">Highlighted passage</p>
+                <p className="text-sm text-slate-700 italic Charter leading-relaxed">
+                  &ldquo;{activeHighlights[0].text}&rdquo;
+                </p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Notes from readers</p>
+                <div className="space-y-5">
+                  {activeHighlights.map((h) => (
+                    <div key={h.id} className="flex gap-4">
+                      <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden ring-2 ring-slate-100 flex-shrink-0">
+                        <img src={h.userAvatar || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt="" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-900 leading-none">{h.userName}</p>
+                        <p className="text-sm text-slate-700 leading-relaxed Charter mt-2">{h.comment}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-bold text-slate-900 leading-none">{activeHighlight.userName}</p>
-              <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-black">Community Note</p>
-            </div>
-            <button onClick={() => setActiveHighlightId(null)} className="text-slate-300 hover:text-slate-900 transition-colors">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="2.5"/></svg>
-            </button>
-          </div>
-          <div className="bg-slate-50 border-l-4 border-emerald-400 p-4 mb-4 rounded-r-xl">
-            <p className="text-xs text-slate-500 italic Charter leading-relaxed line-clamp-3">
-              "{activeHighlight.text}"
-            </p>
-          </div>
-          <p className="text-sm text-slate-800 font-medium leading-relaxed Charter">
-            {activeHighlight.comment}
-          </p>
-          <div className="mt-5 pt-4 border-t border-slate-50 flex items-center justify-between">
-            <button className="text-[10px] font-black text-emerald-600 uppercase tracking-widest hover:text-emerald-700 transition-colors">Applaud Highlight</button>
-            <span className="text-[10px] text-slate-400 font-medium italic">Shared via usethinkup Notes</span>
+            <footer className="px-8 py-5 border-t border-slate-100 bg-slate-50/50 shrink-0">
+              <span className="text-[10px] text-slate-400 font-medium italic">Shared via usethinkup Notes</span>
+            </footer>
           </div>
         </div>
       )}

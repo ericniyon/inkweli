@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Article } from '../types';
+import { PLACEHOLDER_IMAGE } from '../constants';
 
 interface TrendingSectionProps {
   articles: Article[];
@@ -29,7 +30,7 @@ const TrendingSection: React.FC<TrendingSectionProps> = ({ articles, onArticleCl
             </span>
             <div className="flex-grow space-y-2">
               <div className="flex items-center gap-2">
-                <img src={article.authorAvatar} className="w-5 h-5 rounded-full object-cover" />
+                <img src={article.authorAvatar || PLACEHOLDER_IMAGE} className="w-5 h-5 rounded-full object-cover" alt="" />
                 <span className="text-[11px] font-bold text-slate-900">{article.authorName}</span>
               </div>
               <h3 className="text-base font-black text-slate-900 leading-snug group-hover:opacity-70 transition line-clamp-2">

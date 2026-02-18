@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{}"
+self.__REACT_LOADABLE_MANIFEST="{\"app/admin/editor/page.tsx -> @/components/SummernoteEditor\":{\"id\":\"app/admin/editor/page.tsx -> @/components/SummernoteEditor\",\"files\":[\"static/css/_app-pages-browser_components_SummernoteEditor_tsx.css\",\"static/chunks/_app-pages-browser_components_SummernoteEditor_tsx.js\"]},\"components/SummernoteEditor.tsx -> react-quill-new\":{\"id\":\"components/SummernoteEditor.tsx -> react-quill-new\",\"files\":[\"static/chunks/_app-pages-browser_node_modules_react-quill-new_lib_index_js.js\"]}}"

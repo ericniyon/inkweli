@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Article, Category } from '../types';
-import { MOCK_ARTICLES } from '../constants';
+import { MOCK_ARTICLES, PLACEHOLDER_IMAGE } from '../constants';
 
 interface CategoryViewProps {
   topic: Category;
@@ -54,7 +54,7 @@ const CategoryView: React.FC<CategoryViewProps> = ({ topic, onArticleClick }) =>
               >
                 <div className="w-full md:w-80 flex-shrink-0">
                   <div className="aspect-[4/3] rounded-[2rem] overflow-hidden shadow-lg border border-slate-100">
-                     <img src={article.featuredImage} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                     <img src={article.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
                   </div>
                 </div>
                 <div className="flex-grow pt-2">
@@ -93,7 +93,7 @@ const CategoryView: React.FC<CategoryViewProps> = ({ topic, onArticleClick }) =>
                      {MOCK_ARTICLES.slice(0, 3).map((art, i) => (
                        <div key={i} className="group cursor-pointer flex gap-4 animate-fade-in" style={{ animationDelay: `${500 + (i * 100)}ms` }} onClick={() => onArticleClick(art)}>
                           <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-slate-50">
-                            <img src={art.featuredImage} className="w-full h-full object-cover" />
+                            <img src={art.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt="" />
                           </div>
                           <div>
                             <h5 className="text-sm font-black text-slate-900 leading-tight group-hover:text-indigo-600 transition-colors mb-1">{art.title}</h5>

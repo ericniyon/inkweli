@@ -1,0 +1,239 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-inter: "Inter", system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--font-inter);
+  scroll-behavior: smooth;
+  @apply bg-[#FDFCFB] text-slate-900;
+}
+
+/* Article body: match editor (Charter, size, spacing), readable width; ensure text is selectable */
+.article-content {
+  font-family: "Charter", Georgia, serif;
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  width: 100%;
+  max-width: min(65ch, 100%);
+  margin-left: 0;
+  margin-right: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  cursor: text;
+}
+.article-content .p-comment-trigger {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+.article-content .highlight-trigger {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.article-content p,
+.article-content li,
+.article-content blockquote {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.article-content h1,
+.article-content h2,
+.article-content h3,
+.article-content h4 {
+  max-width: 100%;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.article-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.article-content pre,
+.article-content code {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.article-content pre {
+  padding: 1rem 1.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.article-content table {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
+}
+
+.article-content iframe {
+  max-width: 100%;
+}
+
+::selection {
+  background-color: rgba(254, 240, 138, 0.6);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
+
+.paragraph-target {
+  position: relative;
+}
+
+.p-comment-trigger {
+  position: absolute;
+  right: -40px;
+  top: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 50%;
+  color: #94a3b8;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  z-index: 10;
+}
+
+@media (max-width: 1024px) {
+  .p-comment-trigger {
+    right: 0;
+    background: rgba(255, 255, 255, 0.9);
+  }
+}
+
+.paragraph-target:hover .p-comment-trigger {
+  opacity: 1;
+  transform: translateX(4px);
+}
+
+.p-comment-trigger:hover {
+  color: #4f46e5;
+  border-color: #4f46e5;
+  transform: translateX(4px) scale(1.1) !important;
+}
+
+/* Summernote / Quill editor in admin – layout and size */
+.summernote-editor-wrapper .note-editor {
+  border: 0;
+}
+.summernote-editor-wrapper .note-toolbar {
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 8px 12px;
+  gap: 4px;
+}
+.summernote-editor-wrapper .note-editing-area {
+  padding: 16px 20px;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+.summernote-editor-wrapper .note-editable {
+  min-height: 300px;
+}
+.summernote-editor-wrapper .note-btn {
+  border-radius: 8px;
+}
+.summernote-editor-wrapper .note-btn:hover {
+  background: #e2e8f0;
+}
+
+/* Quill editor (SummernoteEditor component) – full width, styled and larger */
+.summernote-editor-styled .quill,
+.summernote-editor-styled .ql-container {
+  width: 100% !important;
+  max-width: none;
+}
+.summernote-editor-styled .ql-toolbar {
+  background: linear-gradient(to bottom, #f8fafc, #f1f5f9);
+  border: 1px solid #e2e8f0;
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  padding: 12px 16px;
+  gap: 4px;
+  min-height: 48px;
+}
+.summernote-editor-styled .ql-toolbar .ql-stroke {
+  stroke: #94a3b8;
+}
+.summernote-editor-styled .ql-toolbar .ql-fill {
+  fill: #64748b;
+}
+.summernote-editor-styled .ql-toolbar .ql-picker-label {
+  color: #475569;
+}
+.summernote-editor-styled .ql-toolbar button:hover .ql-stroke,
+.summernote-editor-styled .ql-toolbar .ql-picker-label:hover .ql-stroke {
+  stroke: #0f172a;
+}
+.summernote-editor-styled .ql-toolbar button.ql-active .ql-stroke,
+.summernote-editor-styled .ql-toolbar button.ql-active .ql-fill {
+  stroke: #0f172a;
+  fill: #0f172a;
+}
+.summernote-editor-styled .ql-container {
+  border: 1px solid #e2e8f0;
+  border-radius: 0 0 12px 12px;
+  font-family: "Charter", Georgia, serif;
+  font-size: 1.0625rem;
+  line-height: 1.75;
+}
+.summernote-editor-styled .ql-editor {
+  min-height: 65vh;
+  max-height: 720px;
+  padding: 20px 24px;
+  color: #0f172a;
+}
+.summernote-editor-styled .ql-editor.ql-blank::before {
+  color: #94a3b8;
+  font-style: normal;
+}
+.summernote-editor-styled .ql-editor:focus {
+  outline: none;
+}
+.summernote-editor-styled .ql-snow .ql-editor {
+  border: none;
+}
+.summernote-editor-styled .ql-snow.ql-toolbar button,
+.summernote-editor-styled .ql-snow .ql-picker {
+  border-radius: 6px;
+}
+.summernote-editor-styled .ql-snow.ql-toolbar button:hover,
+.summernote-editor-styled .ql-snow .ql-picker:hover {
+  background: #e2e8f0;
+}
+.summernote-editor-styled .ql-snow.ql-toolbar button.ql-active,
+.summernote-editor-styled .ql-snow .ql-picker.ql-active .ql-picker-label {
+  background: #e2e8f0;
+  color: #0f172a;
+}
