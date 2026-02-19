@@ -12,6 +12,7 @@ const CategoryView: React.FC<CategoryViewProps> = ({ topic, onArticleClick }) =>
   const filteredArticles = MOCK_ARTICLES.filter(a => a.category === topic);
   
   const categoryManifestos: Record<Category, string> = {
+    "Business (GTM)": "Go-to-market strategy, positioning, and execution that wins you markets—practical intelligence for leaders.",
     Politics: "Deciphering the corridors of power, diplomatic maneuvers, and the policies shaping Rwanda's governance.",
     Economy: "Analysis of market trends, fiscal strategy, and the grassroots innovation driving regional prosperity.",
     Culture: "A mirror to the soul of the nation, celebrating contemporary art, heritage, and the evolving identity of East Africa.",
