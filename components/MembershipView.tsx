@@ -19,7 +19,8 @@ const MembershipView: React.FC<MembershipViewProps> = ({ onGetStarted }) => {
             Become a member to support the voices you love and get unlimited access to the best stories on usethinkup.
           </p>
           <button 
-            onClick={onGetStarted}
+            type="button"
+            onClick={() => onGetStarted()}
             className="bg-white text-indigo-600 px-10 py-4 rounded-full text-lg font-bold hover:bg-indigo-50 transition shadow-2xl active:scale-95"
           >
             Get unlimited access
@@ -145,7 +146,8 @@ const MembershipView: React.FC<MembershipViewProps> = ({ onGetStarted }) => {
         <div className="max-w-xl mx-auto">
           <h2 className="text-4xl md:text-6xl font-black mb-12 tracking-tight">Ready to dive in?</h2>
           <button 
-            onClick={onGetStarted}
+            type="button"
+            onClick={() => onGetStarted()}
             className="bg-slate-900 text-white px-12 py-5 rounded-full text-xl font-bold hover:bg-slate-800 transition shadow-2xl active:scale-95"
           >
             Get started
