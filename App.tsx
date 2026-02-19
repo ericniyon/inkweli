@@ -248,7 +248,7 @@ const App: React.FC<AppProps> = ({ initialArticles = [], initialWriters }) => {
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col lg:flex-row max-w-7xl mx-auto w-full animate-fade-up">
           <div className="flex-1 px-4 sm:px-8 lg:px-12 py-8 min-w-0 max-w-3xl">
-            {currentView === 'FEED' && (
+            {(currentView as View) === 'FEED' && (
               <div className="animate-fade-in">
                 <div className="flex items-center gap-6 border-b border-slate-200 mb-6 overflow-x-auto no-scrollbar">
                   {['For you', 'Following'].map(tab => (
