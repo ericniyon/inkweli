@@ -37,10 +37,10 @@ interface ArticleReaderProps {
   onToggleBookmark: () => void;
   isFollowing: boolean;
   onToggleFollow: () => void;
-  /** When true, only first paragraph is shown and login overlay is displayed */
-  isGuest?: boolean;
-  /** Called when guest taps "Sign in" or "Get started" to continue reading */
-  onLoginClick?: () => void;
+  /** When true, only first paragraph is shown and "Read More" sends to payment page */
+  isLimitedAccess?: boolean;
+  /** Called when user taps "Read More" to go to payment packages */
+  onReadMoreClick?: () => void;
 }
 
 // Audio Decoding Helpers
@@ -83,9 +83,10 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
   onToggleBookmark,
   isFollowing,
   onToggleFollow,
-  isGuest = false,
-  onLoginClick,
+  isLimitedAccess = false,
+  onReadMoreClick,
 }) => {
+  const isGuest = isLimitedAccess; // for existing handlers that check isGuest
   const [claps, setClaps] = useState(article.claps);
   const [hasClapped, setHasClapped] = useState(article.hasClapped ?? false);
   const [progress, setProgress] = useState(0);
@@ -208,7 +209,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
 
   const handleClap = async () => {
     if (isGuest) {
-      onLoginClick?.();
+      onReadMoreClick?.();
       return;
     }
     if (hasClapped) return; // Already clapped, prevent double-clap
@@ -230,7 +231,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
 
   const handlePostResponse = async (text: string) => {
     if (isGuest) {
-      onLoginClick?.();
+      onReadMoreClick?.();
       return;
     }
     try {
@@ -311,7 +312,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
   };
 
   const highlightedContent = useMemo(() => {
-    let content = isGuest ? getFirstParagraphHtml(article.content) : article.content;
+    let content = isLimitedAccess ? getFirstParagraphHtml(article.content) : article.content;
     content = decodeHtmlEntities(content);
 
     // 1. Process Highlights: group by normalized text; match in decoded HTML with flexible whitespace
@@ -349,7 +350,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
     });
     
     return content;
-  }, [article.content, highlights, isGuest]);
+  }, [article.content, highlights, isLimitedAccess]);
 
   const handleContentClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -472,7 +473,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
               className="fixed z-[150] flex items-center gap-1 bg-slate-900 text-white rounded-xl shadow-lg border border-slate-700 py-2 px-2 animate-in fade-in zoom-in-95 duration-200"
               style={{
                 top: selectionRange.rect.top - 52,
-                left: Math.max(12, Math.min(window.innerWidth - 224, selectionRange.rect.left + selectionRange.rect.width / 2 - 112)),
+                left: Math.max(12, Math.min(window.innerWidth - 280, selectionRange.rect.left + selectionRange.rect.width / 2 - 140)),
                 transform: 'translateY(-100%)',
               }}
             >
@@ -485,6 +486,41 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
                   <path strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
                 Add note
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const articleUrl = typeof window !== 'undefined' ? window.location.href : '';
+                  try {
+                    if (typeof navigator !== 'undefined' && navigator.share) {
+                      await navigator.share({
+                        title: article.title,
+                        text: `"${selectionRange.text}" — Read more:`,
+                        url: articleUrl,
+                      });
+                    } else {
+                      await navigator.clipboard?.writeText(`"${selectionRange.text}"\n\nRead this article: ${articleUrl}`);
+                      alert('Link and selection copied. Share it to invite someone to read.');
+                    }
+                  } catch (e) {
+                    if ((e as Error).name !== 'AbortError') {
+                      try {
+                        await navigator.clipboard?.writeText(articleUrl);
+                        alert('Link copied to clipboard.');
+                      } catch {
+                        alert('Could not copy link.');
+                      }
+                    }
+                  }
+                  setSelectionRange(null);
+                  window.getSelection()?.removeAllRanges();
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-500 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                Invite to Read
               </button>
               <button
                 type="button"
@@ -503,31 +539,23 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
             ref={contentRef}
             onClick={handleContentClick}
             className="article-content text-slate-800 Charter leading-[1.8] selection:bg-emerald-100/60"
-            style={isGuest ? { marginBottom: 0 } : undefined}
+            style={isLimitedAccess ? { marginBottom: 0 } : undefined}
             dangerouslySetInnerHTML={{ __html: highlightedContent }}
           />
-          {isGuest && onLoginClick && (
+          {isLimitedAccess && onReadMoreClick && (
             <div className="mt-8 rounded-2xl border border-slate-100 bg-slate-50/80 backdrop-blur-sm p-8 md:p-10 text-center shadow-lg">
               <div className="max-w-md mx-auto space-y-6">
                 <h3 className="text-xl font-black text-slate-900 tracking-tight">Continue reading</h3>
                 <p className="text-slate-600 Charter leading-relaxed">
-                  Sign in or create an account to read the full story and join the conversation.
+                  Unlock full access with an annual package to read all articles.
                 </p>
-                <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                  <button
-                    type="button"
-                    onClick={onLoginClick}
-                    className="px-6 py-3 rounded-full bg-slate-900 text-white text-sm font-bold hover:bg-slate-800 transition"
-                  >
-                    Sign in
-                  </button>
-                  <Link
-                    href="/register"
-                    className="px-6 py-3 rounded-full border-2 border-slate-900 text-slate-900 text-sm font-bold hover:bg-slate-50 transition text-center"
-                  >
-                    Get started
-                  </Link>
-                </div>
+                <button
+                  type="button"
+                  onClick={onReadMoreClick}
+                  className="px-8 py-3 rounded-full bg-slate-900 text-white text-sm font-bold hover:bg-slate-800 transition"
+                >
+                  Read More
+                </button>
               </div>
             </div>
           )}
@@ -562,7 +590,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => (isGuest ? onLoginClick?.() : setIsResponsesOpen(true))}
+                onClick={() => (isLimitedAccess ? onReadMoreClick?.() : setIsResponsesOpen(true))}
                 className="group flex items-center gap-2 text-slate-400 hover:text-slate-900 transition"
               >
                  <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" strokeWidth="2"/></svg>
@@ -656,8 +684,8 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
         onSave={handleAddHighlight}
         currentUser={currentUser}
         isSaving={isSavingHighlight}
-        isGuest={isGuest}
-        onLoginClick={onLoginClick}
+        isGuest={isLimitedAccess}
+        onLoginClick={onReadMoreClick}
       />
 
       {/* Community notes side drawer */}

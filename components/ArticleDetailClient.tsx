@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Article } from "@/types";
+import { Article, SubscriptionTier } from "@/types";
 import { useAuth } from "@/lib/auth-context";
 import { PLACEHOLDER_IMAGE } from "@/constants";
 import type { WriterItem } from "@/lib/articles-server";
@@ -78,9 +78,9 @@ export default function ArticleDetailClient({
   return (
     <div className="min-h-screen bg-white animate-fade-in">
       <nav className="border-b border-slate-100 px-6 py-4 flex items-center justify-between sticky top-0 bg-white z-[100] md:pl-24">
-        <Link href="/" className="flex items-center gap-4">
+        <Link href="/" className="flex items-center gap-4" aria-label="ThinkUp home">
           <Logo size="sm" />
-          <span className="text-xl font-black tracking-tighter">usethinkup</span>
+          <span className="text-xl font-black tracking-tighter">ThinkUp</span>
         </Link>
         <div className="flex items-center gap-4 relative">
           <Link
@@ -150,8 +150,8 @@ export default function ArticleDetailClient({
         onToggleBookmark={() => toggleBookmark(article.id)}
         isFollowing={user.following.includes(article.authorId)}
         onToggleFollow={() => toggleFollow(article.authorId)}
-        isGuest={isGuest}
-        onLoginClick={() => router.push("/login")}
+        isLimitedAccess={isGuest || user.tier !== SubscriptionTier.UNLIMITED}
+        onReadMoreClick={() => router.push("/membership")}
           />
           <Footer />
         </main>

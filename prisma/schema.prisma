@@ -43,27 +43,28 @@ model Writer {
 }
 
 model Article {
-  id            String        @id @default(cuid())
-  title         String
-  slug          String        @unique
-  excerpt       String
-  content       String
-  status        ArticleStatus @default(DRAFT)
-  featuredImage String        @map("featured_image")
-  readingTime   Int           @map("reading_time")
-  category      String
-  claps         Int           @default(0)
-  tags          String[]
-  publishDate   DateTime      @map("publish_date")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
-  authorId      String        @map("author_id")
-  author        User          @relation("Author", fields: [authorId], references: [id], onDelete: Cascade)
-  views         ArticleView[]
-  bookmarks     Bookmark[]
-  highlights    Highlight[]
-  responses     Response[]
-  userClaps     Clap[]
+  id                 String        @id @default(cuid())
+  title              String
+  slug               String        @unique
+  excerpt            String
+  content            String
+  status             ArticleStatus @default(DRAFT)
+  featuredImage      String        @map("featured_image")
+  readingTime        Int           @map("reading_time")
+  category           String
+  claps              Int           @default(0)
+  tags               String[]
+  publishDate        DateTime      @map("publish_date")
+  scheduledPublishAt  DateTime?     @map("scheduled_publish_at")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+  authorId           String        @map("author_id")
+  author             User          @relation("Author", fields: [authorId], references: [id], onDelete: Cascade)
+  views              ArticleView[]
+  bookmarks          Bookmark[]
+  highlights         Highlight[]
+  responses          Response[]
+  userClaps         Clap[]
 }
 
 model Bookmark {
@@ -159,6 +160,13 @@ model SiteLayoutSettings {
   showTrending     Boolean  @default(true) @map("show_trending")
   showFooter       Boolean  @default(true) @map("show_footer")
   updatedAt        DateTime @updatedAt @map("updated_at")
+}
+
+model SiteCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 }
 
 enum UserRole {

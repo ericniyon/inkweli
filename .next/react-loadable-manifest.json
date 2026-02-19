@@ -1,15 +1,1 @@
-{
-  "app/admin/editor/page.tsx -> @/components/SummernoteEditor": {
-    "id": 7826,
-    "files": [
-      "static/css/bcd3ca5273627146.css",
-      "static/chunks/7826.99fadbd293f929c5.js"
-    ]
-  },
-  "components/SummernoteEditor.tsx -> react-quill-new": {
-    "id": 3462,
-    "files": [
-      "static/chunks/3462.b279c2990d7789f2.js"
-    ]
-  }
-}
+{}

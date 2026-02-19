@@ -28,7 +28,7 @@ export interface User {
   articlesViewedThisMonth: string[];
 }
 
-export type Category = 'Politics' | 'Economy' | 'Culture' | 'Technology' | 'Science' | 'Opinion' | 'General';
+export type Category = 'Politics' | 'Economy' | 'Culture' | 'Technology' | 'Science' | 'Opinion' | 'General' | 'Business (GTM)';
 
 export interface Response {
   id: string;

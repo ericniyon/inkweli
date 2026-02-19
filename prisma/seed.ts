@@ -92,6 +92,15 @@ async function main() {
     });
   }
 
+  const defaultCategories = ["Business (GTM)", "Politics", "Economy", "Culture", "Technology", "Science", "Opinion", "General"];
+  for (const name of defaultCategories) {
+    await prisma.siteCategory.upsert({
+      where: { name },
+      create: { name },
+      update: {},
+    });
+  }
+
   console.log("Seed completed.");
 }
 

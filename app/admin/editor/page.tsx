@@ -1,12 +1,15 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, Suspense } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Article, Category } from "@/types";
 
 import { GoogleGenAI } from "@google/genai";
+
+const DRAFT_STORAGE_KEY = (id: string | null) => `thinkup_draft_${id || "new"}`;
+const DRAFT_DEBOUNCE_MS = 1200;
 
 const SummernoteEditor = dynamic(
   () => import("@/components/SummernoteEditor").then((m) => m.default),
@@ -27,33 +30,117 @@ function StoryEditorContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
 
-  const [editingArticle, setEditingArticle] = useState<Partial<Article>>({
+  const [editingArticle, setEditingArticle] = useState<Partial<Article> & { scheduledPublishAt?: string | null }>({
     title: "",
     content: "",
     category: "General",
     status: "DRAFT",
     excerpt: "",
     featuredImage: "",
+    scheduledPublishAt: null,
   });
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [loading, setLoading] = useState(!!id);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const draftTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const saveDraftToStorage = useCallback((payload: Partial<Article> & { scheduledPublishAt?: string | null }) => {
+    try {
+      const key = DRAFT_STORAGE_KEY(id);
+      localStorage.setItem(key, JSON.stringify({
+        title: payload.title ?? "",
+        content: payload.content ?? "",
+        category: payload.category ?? "General",
+        status: payload.status ?? "DRAFT",
+        excerpt: payload.excerpt ?? "",
+        featuredImage: payload.featuredImage ?? "",
+        scheduledPublishAt: payload.scheduledPublishAt ?? null,
+      }));
+    } catch {
+      // ignore
+    }
+  }, [id]);
 
   useEffect(() => {
     if (!id) {
       setLoading(false);
+      try {
+        const raw = localStorage.getItem(DRAFT_STORAGE_KEY(null));
+        if (raw) {
+          const parsed = JSON.parse(raw) as Record<string, unknown>;
+          if (parsed && (parsed.title || parsed.content)) {
+            setEditingArticle((prev) => ({ ...prev, ...parsed }));
+          }
+        }
+      } catch {
+        // ignore
+      }
       return;
     }
+    let cancelled = false;
+    const key = DRAFT_STORAGE_KEY(id);
+    const stored = (() => {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    })();
     fetch(`/api/articles/${id}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data) setEditingArticle(data);
+        if (cancelled) return;
+        if (data) {
+          setEditingArticle({
+            ...data,
+            scheduledPublishAt: data.scheduledPublishAt ? data.scheduledPublishAt.slice(0, 16) : null,
+          });
+          try {
+            localStorage.removeItem(key);
+          } catch {
+            // ignore
+          }
+        } else if (stored) {
+          try {
+            const parsed = JSON.parse(stored) as Record<string, unknown>;
+            if (parsed && (parsed.title || parsed.content)) setEditingArticle((prev) => ({ ...prev, ...parsed }));
+          } catch {
+            // ignore
+          }
+        }
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored) as Record<string, unknown>;
+            if (parsed && (parsed.title || parsed.content)) setEditingArticle((prev) => ({ ...prev, ...parsed }));
+          } catch {
+            // ignore
+          }
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
+
+  useEffect(() => {
+    draftTimeoutRef.current = setTimeout(() => {
+      draftTimeoutRef.current = null;
+      saveDraftToStorage(editingArticle);
+    }, DRAFT_DEBOUNCE_MS);
+    return () => {
+      if (draftTimeoutRef.current) {
+        clearTimeout(draftTimeoutRef.current);
+        draftTimeoutRef.current = null;
+      }
+    };
+  }, [editingArticle.title, editingArticle.content, editingArticle.excerpt, editingArticle.category, editingArticle.status, editingArticle.featuredImage, editingArticle.scheduledPublishAt, saveDraftToStorage]);
 
   const suggestExcerpt = async () => {
     const plainText = stripHtml(editingArticle?.content ?? "");
@@ -96,6 +183,9 @@ function StoryEditorContent() {
         category: editingArticle.category ?? "General",
         tags: editingArticle.tags ?? [],
         status: editingArticle.status ?? "DRAFT",
+        scheduledPublishAt: editingArticle.status === "SCHEDULED" && editingArticle.scheduledPublishAt
+          ? new Date(editingArticle.scheduledPublishAt).toISOString()
+          : undefined,
       };
       if (id) {
         const res = await fetch(`/api/articles/${id}`, {
@@ -113,6 +203,11 @@ function StoryEditorContent() {
         if (!res.ok) throw new Error("Failed to create");
       }
       setLastSaved(new Date().toLocaleTimeString());
+      try {
+        localStorage.removeItem(DRAFT_STORAGE_KEY(id));
+      } catch {
+        // ignore
+      }
       setTimeout(() => router.push("/admin/articles"), 1000);
     } catch (err) {
       console.error(err);
@@ -175,6 +270,16 @@ function StoryEditorContent() {
               {wordCount} words · {readTime} min
             </span>
           </div>
+          {id && (
+            <a
+              href={`/detail/${id}?preview=1`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-3 rounded-xl border border-slate-200 text-slate-700 text-sm font-bold hover:bg-slate-50 transition"
+            >
+              Preview
+            </a>
+          )}
           <button
             type="button"
             onClick={() => setSidebarOpen((o) => !o)}
@@ -261,15 +366,28 @@ function StoryEditorContent() {
                     <option value="SCHEDULED">Scheduled</option>
                   </select>
                 </div>
+                {editingArticle?.status === "SCHEDULED" && (
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-2 block">Publish date & time</label>
+                    <input
+                      type="datetime-local"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+                      value={editingArticle?.scheduledPublishAt ?? ""}
+                      onChange={(e) => setEditingArticle((prev) => ({ ...prev!, scheduledPublishAt: e.target.value || null }))}
+                    />
+                    <p className="text-xs text-slate-500 mt-1">Article will be published automatically at this time.</p>
+                  </div>
+                )}
                 <div>
                   <label className="text-sm font-bold text-slate-700 mb-2 block">Category</label>
-                  <select
+                    <select
                     name="category"
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
                     value={editingArticle?.category ?? "General"}
                     onChange={(e) => setEditingArticle((prev) => ({ ...prev!, category: e.target.value as Category }))}
                   >
                     <option>General</option>
+                    <option>Business (GTM)</option>
                     <option>Politics</option>
                     <option>Economy</option>
                     <option>Culture</option>

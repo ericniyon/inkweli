@@ -16,6 +16,7 @@ export default function RegisterPage() {
           router.push("/dashboard");
         }}
         onLogin={() => router.push("/login")}
+        onProceedToPayment={() => router.push("/membership")}
       />
     </div>
   );
