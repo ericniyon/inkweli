@@ -6,7 +6,7 @@ import { hashPassword } from "@/lib/password";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, email, password } = body;
+    const { name, email, password, planId } = body;
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json(
@@ -39,13 +39,20 @@ export async function POST(request: Request) {
 
     const passwordHash = hashPassword(password);
 
+    const tier =
+      planId === "plan_annual"
+        ? "UNLIMITED"
+        : planId === "plan_per_article"
+          ? "ONE_ARTICLE"
+          : "NONE";
+
     const user = await prisma.user.create({
       data: {
         name: name.trim(),
         email: email.trim().toLowerCase(),
         passwordHash,
         role: UserRole.USER,
-        tier: "NONE",
+        tier,
       },
     });
 

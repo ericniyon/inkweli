@@ -18,28 +18,35 @@ export const GUEST_USER: User = {
   articlesViewedThisMonth: []
 };
 
-/** Subscription plans in RWF (Rwandan Franc). */
+/** Subscription plans in RWF (Rwandan Franc). Benefits per package. */
 export const SUBSCRIPTION_PLANS = [
   {
-    id: 'plan_novis',
-    tier: SubscriptionTier.ONE_ARTICLE,
-    name: 'Novis',
-    price: 10000,
+    id: 'plan_annual',
+    tier: SubscriptionTier.UNLIMITED,
+    name: 'Annual Package',
+    price: 50000,
     currency: 'RWF',
-    interval: 'month',
-    features: ['1 story per month', 'Highlight & comment', 'Support writers'],
-    color: 'slate'
+    interval: 'year',
+    features: [
+      'Access to 10 articles per year',
+      'Ability to comment on content',
+      'Topic-specific 2-hour consultancy session with the author',
+    ],
+    color: 'indigo',
   },
   {
-    id: 'plan_pro',
-    tier: SubscriptionTier.TWO_ARTICLES,
-    name: 'Pro',
-    price: 20000,
+    id: 'plan_per_article',
+    tier: SubscriptionTier.ONE_ARTICLE,
+    name: 'Per Article Package',
+    price: 10000,
     currency: 'RWF',
-    interval: 'month',
-    features: ['More stories per month', 'Full highlighting', 'Offline reading', 'Support authors', 'Audio read', 'Article summarization'],
-    color: 'indigo'
-  }
+    interval: 'article',
+    features: [
+      'Ability to comment at the end of the article',
+      'Topic-specific 1-hour consultancy session with the author',
+    ],
+    color: 'slate',
+  },
 ];
 
 export const WRITERS = [

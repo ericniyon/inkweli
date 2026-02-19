@@ -76,6 +76,7 @@ export async function POST(request: Request) {
       category,
       tags,
       status = "DRAFT",
+      scheduledPublishAt,
     } = body;
 
     if (!title || !slug || !authorId) {
@@ -133,6 +134,7 @@ export async function POST(request: Request) {
         tags: Array.isArray(tags) ? tags : [],
         status: status === "PUBLISHED" ? "PUBLISHED" : status === "SCHEDULED" ? "SCHEDULED" : "DRAFT",
         publishDate: new Date(),
+        ...(scheduledPublishAt && { scheduledPublishAt: new Date(scheduledPublishAt) }),
       },
       include: {
         author: {

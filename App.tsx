@@ -100,7 +100,7 @@ const App: React.FC<AppProps> = ({ initialArticles = [], initialWriters }) => {
     }
   };
 
-  const showLandingFeed = isGuest && currentView === 'FEED';
+  const showLandingFeed = currentView === 'FEED';
 
   if (!hydrated) {
     return (
@@ -118,7 +118,6 @@ const App: React.FC<AppProps> = ({ initialArticles = [], initialWriters }) => {
           <LandingPageView 
             articles={latestArticles} 
             onArticleClick={handleArticleClick} 
-            onGetStarted={() => router.push('/register')} 
           />
         </div>
         <Footer />
@@ -134,16 +133,18 @@ const App: React.FC<AppProps> = ({ initialArticles = [], initialWriters }) => {
           <Link href="/" className="flex items-center shrink-0" onClick={() => setCurrentView('FEED')} aria-label="Home">
             <Logo size="sm" />
           </Link>
-          <div className="relative hidden sm:block flex-1 max-w-sm">
-            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="2" /></svg>
+          {user.role === 'ADMIN' && (
+            <div className="relative hidden sm:block flex-1 max-w-sm">
+              <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="2" /></svg>
+              </div>
+              <input 
+                type="text" 
+                placeholder="Search" 
+                className="w-full bg-slate-50 rounded-full py-2 pl-10 pr-4 text-sm outline-none border border-slate-100 focus:bg-white focus:border-slate-300 focus:ring-1 focus:ring-slate-200"
+              />
             </div>
-            <input 
-              type="text" 
-              placeholder="Search" 
-              className="w-full bg-slate-50 rounded-full py-2 pl-10 pr-4 text-sm outline-none border border-slate-100 focus:bg-white focus:border-slate-300 focus:ring-1 focus:ring-slate-200"
-            />
-          </div>
+          )}
           <nav className="hidden md:flex items-center gap-1">
             {(['FEED', 'LIBRARY', 'PROFILE', 'STORIES', 'STATS'] as const).map((view) => (
               <button

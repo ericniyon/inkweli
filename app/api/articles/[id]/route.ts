@@ -70,6 +70,7 @@ export async function GET(
       claps: article.claps,
       hasClapped,
       tags: article.tags,
+      scheduledPublishAt: article.scheduledPublishAt?.toISOString() ?? null,
       responses: article.responses.map((r) => ({
         id: r.id,
         userId: r.userId,
@@ -120,6 +121,7 @@ export async function PATCH(
       category,
       tags,
       status,
+      scheduledPublishAt,
     } = body;
 
     const article = await prisma.article.update({
@@ -134,6 +136,7 @@ export async function PATCH(
         ...(category != null && { category }),
         ...(Array.isArray(tags) && { tags }),
         ...(status != null && { status }),
+        ...(scheduledPublishAt != null && { scheduledPublishAt: scheduledPublishAt ? new Date(scheduledPublishAt) : null }),
       },
       include: {
         author: { select: { id: true, name: true, avatar: true } },
@@ -156,6 +159,7 @@ export async function PATCH(
       category: article.category,
       claps: article.claps,
       tags: article.tags,
+      scheduledPublishAt: article.scheduledPublishAt?.toISOString() ?? null,
     });
   } catch (e) {
     console.error("PATCH /api/articles/[id]", e);

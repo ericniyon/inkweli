@@ -9,11 +9,12 @@ import { GoogleGenAI } from "@google/genai";
 import Logo from './Logo';
 import { useAuth } from '@/lib/auth-context';
 
-type AdminSection = 'OVERVIEW' | 'ARTICLES' | 'USERS' | 'TEAM' | 'LAYOUT' | 'BRAND';
+type AdminSection = 'OVERVIEW' | 'ARTICLES' | 'USERS' | 'TEAM' | 'LAYOUT' | 'BRAND' | 'CATEGORIES';
 
 const ADMIN_NAV: { id: AdminSection; label: string; icon: string }[] = [
   { id: 'OVERVIEW', label: 'Dashboard', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' },
   { id: 'ARTICLES', label: 'Articles', icon: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10l4 4v10a2 2 0 01-2 2z' },
+  { id: 'CATEGORIES', label: 'Categories', icon: 'M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7a2 2 0 010-2.828l7-7A2 2 0 0112 3h5a2 2 0 012 2v2a2 2 0 01-2 2H7a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 012-2z' },
   { id: 'USERS', label: 'Subscribers', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
   { id: 'TEAM', label: 'Writers', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
   { id: 'LAYOUT', label: 'Site Layout', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z' },
@@ -63,6 +64,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [deletingInProgress, setDeletingInProgress] = useState(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const [articleMenuOpenId, setArticleMenuOpenId] = useState<string | null>(null);
 
   // Writers (TEAM section)
   const [writersList, setWritersList] = useState<WriterFromApi[]>([]);
@@ -86,6 +88,70 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
     twitter: '',
     linkedin: '',
   });
+
+  const [categoriesList, setCategoriesList] = useState<string[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [deletingCategory, setDeletingCategory] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCategoriesLoading(true);
+    fetch('/api/categories')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setCategoriesList(Array.isArray(data) ? data : []))
+      .catch(() => setCategoriesList([]))
+      .finally(() => setCategoriesLoading(false));
+  }, []);
+
+  const refetchCategories = () => {
+    fetch('/api/categories')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setCategoriesList(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  };
+
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    setAddingCategory(true);
+    try {
+      const res = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newCategoryName.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setNewCategoryName('');
+        refetchCategories();
+      } else {
+        alert(data.error || 'Failed to add category');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to add category');
+    } finally {
+      setAddingCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async (name: string) => {
+    setDeletingCategory(name);
+    try {
+      const res = await fetch(`/api/categories/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      if (res.ok) refetchCategories();
+      else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Failed to delete category');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete category');
+    } finally {
+      setDeletingCategory(null);
+    }
+  };
 
   useEffect(() => {
     fetch('/api/articles?admin=1')
@@ -419,6 +485,57 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
             </div>
           )}
 
+          {activeSection === 'CATEGORIES' && (
+            <div className="space-y-8 animate-fade-in">
+              <p className="text-slate-500 font-medium">Add or remove article categories. New categories appear in the article editor and filters.</p>
+              <form onSubmit={handleAddCategory} className="flex gap-4 flex-wrap items-end">
+                <div className="min-w-[200px]">
+                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">New category name</label>
+                  <input
+                    type="text"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="e.g. Business (GTM)"
+                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={addingCategory || !newCategoryName.trim()}
+                  className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-xs font-black uppercase tracking-widest hover:bg-indigo-600 transition disabled:opacity-50"
+                >
+                  {addingCategory ? 'Adding…' : 'Add category'}
+                </button>
+              </form>
+              <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+                <div className="px-8 py-6 border-b border-slate-100">
+                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Current categories</h3>
+                </div>
+                {categoriesLoading ? (
+                  <div className="px-8 py-12 text-center text-slate-500 font-medium">Loading…</div>
+                ) : categoriesList.length === 0 ? (
+                  <div className="px-8 py-12 text-center text-slate-500 font-medium">No categories yet. Add one above or run seed.</div>
+                ) : (
+                  <ul className="divide-y divide-slate-50">
+                    {categoriesList.map((name) => (
+                      <li key={name} className="flex items-center justify-between px-8 py-4 hover:bg-slate-50/50 transition">
+                        <span className="text-sm font-bold text-slate-900">{name}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCategory(name)}
+                          disabled={deletingCategory === name}
+                          className="px-4 py-2 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 border border-red-100 transition disabled:opacity-50"
+                        >
+                          {deletingCategory === name ? 'Removing…' : 'Remove'}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
+
           {activeSection === 'USERS' && (
             <div className="space-y-8 animate-fade-in">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -722,6 +839,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
                       onChange={(e) => setCategoryFilter(e.target.value as Category | 'All')}
                     >
                       <option>All</option>
+                      <option>Business (GTM)</option>
                       <option>Politics</option>
                       <option>Economy</option>
                       <option>Culture</option>
@@ -814,23 +932,39 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
                             )}
                           </td>
                           <td className="px-8 py-6 text-right">
-                             <div className="flex justify-end items-center gap-3">
-                                <Link 
-                                  href={`/admin/editor?id=${article.id}`}
-                                  className="inline-flex items-center gap-2 px-3 py-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all text-xs font-bold"
-                                  title="Edit article"
+                             <div className="relative flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => setArticleMenuOpenId(articleMenuOpenId === article.id ? null : article.id)}
+                                  className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
+                                  aria-label="Article options"
+                                  aria-expanded={articleMenuOpenId === article.id}
                                 >
-                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                   Edit
-                                </Link>
-                                <button 
-                                  onClick={() => setIsDeleting(article.id)}
-                                  className="inline-flex items-center gap-2 px-3 py-2 text-slate-600 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all text-xs font-bold"
-                                  title="Delete article"
-                                >
-                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                   Delete
+                                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
                                 </button>
+                                {articleMenuOpenId === article.id && (
+                                  <>
+                                    <div className="fixed inset-0 z-[200]" aria-hidden onClick={() => setArticleMenuOpenId(null)} />
+                                    <div className="absolute right-0 top-full mt-1 py-1.5 w-40 bg-white border border-slate-200 rounded-xl shadow-lg z-[210] animate-in fade-in slide-in-from-top-1 duration-150">
+                                      <Link
+                                        href={`/admin/editor?id=${article.id}`}
+                                        className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg mx-1 transition"
+                                        onClick={() => setArticleMenuOpenId(null)}
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                        Edit
+                                      </Link>
+                                      <button
+                                        type="button"
+                                        onClick={() => { setArticleMenuOpenId(null); setIsDeleting(article.id); }}
+                                        className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg mx-1 transition text-left"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
                              </div>
                           </td>
                         </tr>

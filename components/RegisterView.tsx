@@ -1,12 +1,40 @@
 import React, { useState } from 'react';
 import { User } from '../types';
 
+const PENDING_REGISTRATION_KEY = 'thinkup_pending_registration';
+
+export interface PendingRegistration {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export function getPendingRegistration(): PendingRegistration | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(PENDING_REGISTRATION_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as PendingRegistration;
+    if (data?.name && data?.email && data?.password) return data;
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export function clearPendingRegistration(): void {
+  if (typeof window === 'undefined') return;
+  sessionStorage.removeItem(PENDING_REGISTRATION_KEY);
+}
+
 interface RegisterViewProps {
   onRegister: (user: User) => void;
   onLogin: () => void;
+  /** Called after saving registration data; user must complete payment to finish. */
+  onProceedToPayment?: () => void;
 }
 
-const RegisterView: React.FC<RegisterViewProps> = ({ onRegister, onLogin }) => {
+const RegisterView: React.FC<RegisterViewProps> = ({ onRegister, onLogin, onProceedToPayment }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,6 +56,14 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onRegister, onLogin }) => {
 
     setLoading(true);
     try {
+      if (onProceedToPayment) {
+        sessionStorage.setItem(
+          PENDING_REGISTRATION_KEY,
+          JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password })
+        );
+        onProceedToPayment();
+        return;
+      }
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -116,7 +152,7 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onRegister, onLogin }) => {
             disabled={loading}
             className="w-full bg-slate-900 text-white text-xs font-black py-5 rounded-3xl tracking-[0.2em] uppercase hover:bg-indigo-600 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-slate-200 mt-4 disabled:opacity-60 disabled:pointer-events-none"
           >
-            {loading ? 'Creating account…' : 'Create Account'}
+            {loading ? 'Redirecting…' : onProceedToPayment ? 'Proceed to payment' : 'Create Account'}
           </button>
         </form>
 

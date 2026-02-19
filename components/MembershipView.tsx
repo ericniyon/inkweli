@@ -2,7 +2,8 @@ import React from 'react';
 import { SUBSCRIPTION_PLANS } from '@/constants';
 
 interface MembershipViewProps {
-  onGetStarted: () => void;
+  /** Called when user clicks Get started; planId is the selected package (e.g. plan_annual). */
+  onGetStarted: (planId?: string) => void;
 }
 
 const MembershipView: React.FC<MembershipViewProps> = ({ onGetStarted }) => {
@@ -68,36 +69,34 @@ const MembershipView: React.FC<MembershipViewProps> = ({ onGetStarted }) => {
         </div>
       </section>
 
-      {/* Membership Tiers / Features — RWF pricing */}
+      {/* Benefits Per Package — RWF pricing */}
       <section className="py-32 px-6 bg-slate-50">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-20">
-            <h2 className="text-4xl md:text-6xl font-black mb-6 tracking-tight">Two ways to support stories.</h2>
+            <h2 className="text-4xl md:text-6xl font-black mb-6 tracking-tight">Benefits Per Package</h2>
             <p className="text-slate-600 font-medium">Prices in Rwandan Francs (RWF)</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {SUBSCRIPTION_PLANS.map((plan, index) => {
-              const isPro = plan.id === 'plan_pro';
+            {SUBSCRIPTION_PLANS.map((plan) => {
+              const isAnnual = plan.id === 'plan_annual';
+              const isPro = isAnnual; // alias for any legacy/cached reference
               return (
                 <div
                   key={plan.id}
                   className={`bg-white p-12 rounded-[2.5rem] flex flex-col relative overflow-hidden ${
-                    isPro ? 'border-2 border-indigo-600 shadow-xl' : 'border border-slate-200 shadow-sm'
+                    isAnnual ? 'border-2 border-indigo-600 shadow-xl' : 'border border-slate-200 shadow-sm'
                   }`}
                 >
-                  {isPro && (
+                  {isAnnual && (
                     <div className="absolute top-0 right-0 bg-indigo-600 text-white px-4 py-1 text-[10px] font-black uppercase tracking-widest rounded-bl-xl">
-                      Best Value
+                      Full access
                     </div>
                   )}
                   <h3 className="text-2xl font-black mb-2">{plan.name}</h3>
-                  <p className="text-slate-500 mb-8 font-medium">
-                    {index === 0 ? 'Get started. Support writers.' : 'More stories. Extra impact.'}
-                  </p>
                   <div className="text-4xl font-black mb-8">
                     {new Intl.NumberFormat('en-RW').format(plan.price)}
-                    <span className="text-lg text-slate-400 font-bold"> RWF/{plan.interval}</span>
+                    <span className="text-lg text-slate-400 font-bold"> RWF{plan.interval === 'year' ? '/year' : '/article'}</span>
                   </div>
                   <ul className="space-y-4 mb-12 flex-grow">
                     {plan.features.map((item, i) => (
@@ -108,9 +107,10 @@ const MembershipView: React.FC<MembershipViewProps> = ({ onGetStarted }) => {
                     ))}
                   </ul>
                   <button
-                    onClick={onGetStarted}
+                    type="button"
+                    onClick={() => onGetStarted(plan.id)}
                     className={`w-full py-4 rounded-full font-bold transition ${
-                      isPro ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-900 text-white hover:bg-slate-800'
+                      isAnnual ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-900 text-white hover:bg-slate-800'
                     }`}
                   >
                     Get started
