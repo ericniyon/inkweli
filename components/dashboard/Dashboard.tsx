@@ -6,7 +6,7 @@ import { Article } from "@/types";
 import { WRITERS, PLACEHOLDER_IMAGE } from "@/constants";
 import { useAuth } from "@/lib/auth-context";
 import type { WriterItem } from "@/lib/articles-server";
-import DashboardNavbar from "./DashboardNavbar";
+import SiteHeader from "@/components/SiteHeader";
 import DashboardSidebar from "./DashboardSidebar";
 import DashboardFeed from "./DashboardFeed";
 import DashboardRightPanel from "./DashboardRightPanel";
@@ -230,16 +230,10 @@ export default function Dashboard({
   };
 
   return (
-    <div className="min-h-screen bg-white">
-      <DashboardNavbar
-        onNavigate={handleNavigate}
-        onLogout={handleLogout}
-        userAvatar={user.avatar || PLACEHOLDER_IMAGE}
-        userName={user.name}
-        userEmail={user.email}
-      />
+    <div className="min-h-screen bg-white flex flex-col">
+      <SiteHeader variant="white" />
 
-      <div className="flex pt-14">
+      <div className="flex flex-1 min-h-0">
         <DashboardSidebar
           activeView={activeView}
           onNavigate={handleNavigate}

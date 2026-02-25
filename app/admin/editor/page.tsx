@@ -44,7 +44,17 @@ function StoryEditorContent() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [loading, setLoading] = useState(!!id);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const draftTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!previewOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPreviewOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [previewOpen]);
 
   const saveDraftToStorage = useCallback((payload: Partial<Article> & { scheduledPublishAt?: string | null }) => {
     try {
@@ -270,16 +280,13 @@ function StoryEditorContent() {
               {wordCount} words · {readTime} min
             </span>
           </div>
-          {id && (
-            <a
-              href={`/detail/${id}?preview=1`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-3 rounded-xl border border-slate-200 text-slate-700 text-sm font-bold hover:bg-slate-50 transition"
-            >
-              Preview
-            </a>
-          )}
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            className="px-4 py-3 rounded-xl border border-slate-200 text-slate-700 text-sm font-bold hover:bg-slate-50 transition"
+          >
+            Preview
+          </button>
           <button
             type="button"
             onClick={() => setSidebarOpen((o) => !o)}
@@ -485,6 +492,63 @@ function StoryEditorContent() {
           </div>
         </aside>
       </div>
+
+      {/* Preview dialog – shows current draft (including unsaved changes) */}
+      {previewOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          onClick={() => setPreviewOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Article preview"
+        >
+          <div
+            className="relative w-full max-w-4xl h-[90vh] bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between flex-shrink-0 px-4 py-3 border-b border-slate-200 bg-slate-50">
+              <span className="text-sm font-bold text-slate-700">
+                Preview {lastSaved ? "" : "(unsaved)"}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(false)}
+                className="p-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200 transition"
+                aria-label="Close preview"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <article className="max-w-[900px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <header className="mb-8">
+                  <h1 className="font-charter font-black text-slate-900 text-2xl sm:text-3xl md:text-4xl leading-tight tracking-tight mb-4">
+                    {editingArticle?.title || "Untitled"}
+                  </h1>
+                  {editingArticle?.excerpt && (
+                    <p className="font-charter text-slate-600 text-base sm:text-lg leading-relaxed mb-6">
+                      {editingArticle.excerpt}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2 py-4 border-t border-b border-slate-100 text-slate-500 text-sm">
+                    <span>{editingArticle?.category ?? "General"}</span>
+                    <span>·</span>
+                    <span>{readTime} min read</span>
+                  </div>
+                </header>
+                <div
+                  className="article-content font-charter text-slate-800 leading-[1.8]"
+                  dangerouslySetInnerHTML={{
+                    __html: (editingArticle?.content ?? "").replace(/\n/g, "<br>"),
+                  }}
+                />
+              </article>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

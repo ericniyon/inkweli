@@ -1,13 +1,8 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import { AuthProvider } from "@/lib/auth-context";
 import { SiteLayoutProvider } from "@/lib/site-layout-context";
+import SessionProviderWrapper from "@/components/SessionProviderWrapper";
 import "./globals.css";
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-});
 
 export const metadata: Metadata = {
   title: "usethinkup | Premium Publishing",
@@ -27,17 +22,18 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link rel="preconnect" href="https://cdn.jsdelivr.net" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Charter:ital,wght@0,400;0,700;1,400&display=swap"
+          href="https://cdn.jsdelivr.net/npm/charter-webfont@4/charter.min.css"
           rel="stylesheet"
         />
       </head>
-      <body className={`${inter.variable} antialiased`}>
-        <AuthProvider>
-          <SiteLayoutProvider>{children}</SiteLayoutProvider>
-        </AuthProvider>
+      <body className="antialiased font-charter">
+        <SessionProviderWrapper>
+          <AuthProvider>
+            <SiteLayoutProvider>{children}</SiteLayoutProvider>
+          </AuthProvider>
+        </SessionProviderWrapper>
       </body>
     </html>
   );

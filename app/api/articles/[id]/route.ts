@@ -92,8 +92,8 @@ export async function GET(
       })),
     });
 
-    // Allow short-term cache so reloads and back/forward are faster
-    response.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=120");
+    // No cache so detail view always shows latest edited content
+    response.headers.set("Cache-Control", "private, no-store, max-age=0");
     return response;
   } catch (e) {
     console.error("GET /api/articles/[id]", e);

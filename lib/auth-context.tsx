@@ -52,6 +52,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setHydrated(true);
   }, []);
 
+  // Sync with NextAuth session (e.g. after sign-in)
+  useEffect(() => {
+    if (!hydrated) return;
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.id && data?.email && data?.name) {
+          setUserState(data);
+          setStoredUser(data);
+        }
+      })
+      .catch(() => {});
+  }, [hydrated]);
+
   const isGuest = user.id === "guest";
 
   const setUser = useCallback((u: User) => {

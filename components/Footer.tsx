@@ -1,44 +1,28 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useSiteLayout } from "@/lib/site-layout-context";
+import Logo from "./Logo";
 
 const Footer: React.FC = () => {
   const { showFooter } = useSiteLayout();
   if (!showFooter) return null;
 
-  const links = [
-    'Help',
-    'Status',
-    'About',
-    'Careers',
-    'Blog',
-    'Privacy',
-    'Terms',
-    'Text to Speech',
-    'Teams'
-  ];
-
   return (
-    <footer className="w-full border-t border-slate-100 bg-white py-12 mt-20">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="flex flex-wrap justify-center items-center gap-x-8 gap-y-4">
-          {links.map((link) => (
-            <a
-              key={link}
-              href="#"
-              className="text-[13px] font-medium text-slate-500 hover:text-slate-900 transition-colors duration-200"
-            >
-              {link}
-            </a>
-          ))}
-        </div>
-        <div className="mt-8 text-center">
-          <p className="text-[11px] font-bold text-slate-300 uppercase tracking-[0.2em]">
-            © {new Date().getFullYear()} usethinkup platform
-          </p>
-        </div>
+    <footer className="py-16 px-6 border-t border-gray-100 flex flex-col items-center text-center bg-gray-50/50">
+      <Link href="/" className="mb-6 flex items-center gap-2 text-slate-900" aria-label="ThinkUp home">
+        <Logo size="sm" />
+        <span className="font-charter font-bold text-medium-h3 tracking-tight">ThinkUp</span>
+      </Link>
+      <div className="font-charter flex gap-8 mb-8 text-medium-small font-medium uppercase tracking-widest text-gray-400">
+        <a href="#" className="hover:text-black transition-colors">Twitter</a>
+        <a href="#" className="hover:text-black transition-colors">LinkedIn</a>
+        <a href="#" className="hover:text-black transition-colors">Newsletter</a>
       </div>
+      <p className="text-[10px] font-mono text-gray-300 uppercase tracking-[0.3em]">
+        © {new Date().getFullYear()} ThinkUp Intelligence. All Rights Reserved.
+      </p>
     </footer>
   );
 };

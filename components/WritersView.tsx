@@ -4,7 +4,7 @@ import { WRITERS, PLACEHOLDER_IMAGE } from '../constants';
 
 const WritersView: React.FC = () => {
   return (
-    <div className="max-w-7xl mx-auto px-6 py-20 animate-fade-in">
+    <div className="max-w-[1600px] mx-auto px-6 py-20 animate-fade-in">
       <header className="mb-24 text-center animate-fade-up">
         <h1 className="text-5xl font-black text-slate-900 mb-6 tracking-tight">The Voices</h1>
         <p className="text-xl text-slate-500 max-w-2xl mx-auto">Meet the independent thinkers and journalists bringing you the news from the heart of the region.</p>

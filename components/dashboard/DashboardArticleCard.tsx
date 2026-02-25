@@ -35,12 +35,12 @@ export default function DashboardArticleCard({ article, onBookmark, isBookmarked
 
   return (
     <div
-      className="py-8 border-b border-zinc-100 last:border-0 group cursor-pointer"
+      className="py-6 px-5 sm:px-6 rounded-2xl border border-zinc-100 bg-white shadow-sm hover:border-sky-200 hover:-translate-y-0.5 transition-all duration-300 ease-out group cursor-pointer"
       onClick={onClick}
     >
       <div className="flex justify-between gap-8">
-        <div className="flex-1 space-y-2">
-          <div className="flex items-center gap-2 text-xs mb-3 flex-wrap">
+        <div className="flex-1 space-y-2 font-charter min-w-0">
+          <div className="flex items-center gap-2 text-medium-meta mb-3 flex-wrap">
             <OptimizedImage
               src={article.authorAvatar || PLACEHOLDER_IMAGE}
               alt={article.authorName}
@@ -56,20 +56,20 @@ export default function DashboardArticleCard({ article, onBookmark, isBookmarked
             {isMemberOnly && (
               <div className="flex items-center gap-1 text-yellow-600 font-bold ml-auto">
                 <StarIcon />
-                <span className="uppercase text-[10px] tracking-tight">Member-only</span>
+                <span className="uppercase text-medium-small tracking-tight">Member-only</span>
               </div>
             )}
           </div>
 
-          <h2 className="text-xl font-bold leading-tight group-hover:underline text-zinc-900">
+          <h2 className="text-medium-h3 font-bold leading-tight group-hover:text-indigo-600 text-zinc-900 transition-colors duration-200">
             {article.title}
           </h2>
-          <p className="text-zinc-500 text-sm line-clamp-2 leading-relaxed">
+          <p className="text-zinc-500 text-medium-body line-clamp-2 leading-relaxed">
             {article.excerpt}
           </p>
 
           <div className="flex items-center justify-between pt-6">
-            <div className="flex items-center gap-4 text-zinc-400 text-xs">
+            <div className="flex items-center gap-4 text-zinc-400 text-medium-meta">
               <button
                 type="button"
                 onClick={(e) => {
@@ -82,7 +82,7 @@ export default function DashboardArticleCard({ article, onBookmark, isBookmarked
               </button>
               <span>{article.publishDate}</span>
               <div className="flex items-center gap-1">
-                <span className="text-[10px]">»»</span>
+                <span className="text-medium-small">»»</span>
                 <span>{article.claps}</span>
               </div>
             </div>
@@ -96,13 +96,13 @@ export default function DashboardArticleCard({ article, onBookmark, isBookmarked
           </div>
         </div>
 
-        <div className="w-28 h-28 sm:w-40 sm:h-28 shrink-0 overflow-hidden rounded border border-zinc-50 relative">
+        <div className="w-28 h-28 sm:w-40 sm:h-28 shrink-0 overflow-hidden rounded-xl border border-zinc-100 ring-1 ring-zinc-100 group-hover:ring-zinc-200 relative transition-all duration-300">
           <OptimizedImage
             src={article.featuredImage || PLACEHOLDER_IMAGE}
             alt={article.title}
             fill
             sizes="160px"
-            className="object-cover group-hover:scale-105 transition-transform duration-300"
+            className="object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
           />
         </div>
       </div>

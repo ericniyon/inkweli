@@ -2,18 +2,23 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/password";
 
+const SEEDED_ADMIN_EMAIL = "admin@thinkup.com";
+const isDev = process.env.NODE_ENV === "development";
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password } = body;
+    const emailRaw = body.email;
+    const password = typeof body.password === "string" ? body.password.trim() : "";
 
-    if (!email || typeof email !== "string" || !email.trim()) {
+    if (!emailRaw || typeof emailRaw !== "string" || !emailRaw.trim()) {
       return NextResponse.json(
         { error: "Email is required" },
         { status: 400 }
       );
     }
-    if (!password || typeof password !== "string") {
+    const email = emailRaw.trim().toLowerCase();
+    if (!password) {
       return NextResponse.json(
         { error: "Password is required" },
         { status: 400 }
@@ -21,20 +26,26 @@ export async function POST(request: Request) {
     }
 
     const user = await prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
+      where: { email },
     });
 
     if (!user || !user.passwordHash) {
+      const hint = isDev && email === SEEDED_ADMIN_EMAIL
+        ? " No user found. Run: npx prisma db seed (seed uses password: admin123)"
+        : "";
       return NextResponse.json(
-        { error: "Invalid email or password" },
+        { error: `Invalid email or password.${hint}` },
         { status: 401 }
       );
     }
 
     const valid = verifyPassword(password, user.passwordHash);
     if (!valid) {
+      const hint = isDev && email === SEEDED_ADMIN_EMAIL
+        ? " Seeded admin password is: admin123"
+        : "";
       return NextResponse.json(
-        { error: "Invalid email or password" },
+        { error: `Invalid email or password.${hint}` },
         { status: 401 }
       );
     }

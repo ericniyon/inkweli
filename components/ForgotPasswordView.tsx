@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 
 interface ForgotPasswordViewProps {
@@ -9,15 +8,38 @@ const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({ onBackToLogin }
   const [email, setEmail] = useState('');
   const [isSent, setIsSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [devResetLink, setDevResetLink] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) {
+    setError(null);
+    setDevResetLink(null);
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed) {
       setError('Please provide your email address.');
       return;
     }
-    // Simulation
-    setIsSent(true);
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmed }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Something went wrong. Please try again.');
+        return;
+      }
+      setEmail(trimmed);
+      if (data.devResetLink) setDevResetLink(data.devResetLink);
+      setIsSent(true);
+    } catch {
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -33,12 +55,22 @@ const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({ onBackToLogin }
 
         {isSent ? (
           <div className="text-center space-y-8 animate-in fade-in slide-in-from-bottom-4">
-             <div className="p-6 bg-emerald-50 border border-emerald-100 rounded-3xl">
-                <p className="text-sm font-bold text-emerald-800 leading-relaxed italic">
-                  "Check your inbox. We've sent a recovery link to <strong>{email}</strong>."
+             <div className="p-6 bg-emerald-50 border border-emerald-100 rounded-3xl space-y-3">
+                <p className="text-sm font-bold text-emerald-800 leading-relaxed">
+                  If an account exists with <strong>{email}</strong>, you will receive a password reset link shortly.
                 </p>
+                {devResetLink ? (
+                  <p className="text-xs text-emerald-800 break-all">
+                    <span className="font-semibold">Development:</span> Email not sent (SMTP not configured). Use this link to reset: <a href={devResetLink} className="underline">Reset password</a>
+                  </p>
+                ) : (
+                  <p className="text-xs text-emerald-700">
+                    Check your spam folder. If you don&apos;t receive it, ensure SMTP is configured in .env (SMTP_HOST, SMTP_USER, SMTP_PASS, EMAIL_FROM, APP_URL).
+                  </p>
+                )}
              </div>
              <button 
+               type="button"
                onClick={onBackToLogin}
                className="w-full bg-slate-900 text-white text-xs font-black py-5 rounded-3xl tracking-[0.2em] uppercase hover:bg-indigo-600 transition shadow-xl"
              >
@@ -61,9 +93,10 @@ const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({ onBackToLogin }
 
             <button 
               type="submit"
-              className="w-full bg-slate-900 text-white text-xs font-black py-5 rounded-3xl tracking-[0.2em] uppercase hover:bg-indigo-600 transition shadow-xl shadow-slate-100 mt-4"
+              disabled={loading}
+              className="w-full bg-slate-900 text-white text-xs font-black py-5 rounded-3xl tracking-[0.2em] uppercase hover:bg-indigo-600 transition shadow-xl shadow-slate-100 mt-4 disabled:opacity-60 disabled:pointer-events-none"
             >
-              Send Reset Link
+              {loading ? 'Sending…' : 'Send Reset Link'}
             </button>
             
             <button 
