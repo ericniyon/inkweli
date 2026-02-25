@@ -45,6 +45,18 @@ interface SubscriberFromApi {
   status: string;
 }
 
+interface WriterRequestFromApi {
+  id: string;
+  name: string;
+  email: string;
+  bio?: string;
+  motivation?: string;
+  topics?: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface SiteLayoutSettingsForm {
   showLogoInHeader: boolean;
   stickyHeader: boolean;
@@ -75,6 +87,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
   const [removingWriterInProgress, setRemovingWriterInProgress] = useState(false);
   const [editingWriter, setEditingWriter] = useState<WriterFromApi | null>(null);
   const [editWriterSubmitting, setEditWriterSubmitting] = useState(false);
+  const [writerRequestsList, setWriterRequestsList] = useState<WriterRequestFromApi[]>([]);
+  const [writerRequestsLoading, setWriterRequestsLoading] = useState(true);
   const [subscribersList, setSubscribersList] = useState<SubscriberFromApi[]>([]);
   const [subscribersLoading, setSubscribersLoading] = useState(true);
   const [layoutSettings, setLayoutSettings] = useState<SiteLayoutSettingsForm | null>(null);
@@ -94,6 +108,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
   const [newCategoryName, setNewCategoryName] = useState('');
   const [addingCategory, setAddingCategory] = useState(false);
   const [deletingCategory, setDeletingCategory] = useState<string | null>(null);
+  const [editingCategoryName, setEditingCategoryName] = useState<string | null>(null);
+  const [editCategoryValue, setEditCategoryValue] = useState('');
+  const [updatingCategory, setUpdatingCategory] = useState(false);
 
   useEffect(() => {
     setCategoriesLoading(true);
@@ -153,6 +170,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
     }
   };
 
+  const openEditCategory = (name: string) => {
+    setEditingCategoryName(name);
+    setEditCategoryValue(name);
+  };
+
+  const handleSaveEditCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategoryName || !editCategoryValue.trim()) return;
+    setUpdatingCategory(true);
+    try {
+      const res = await fetch(`/api/categories/${encodeURIComponent(editingCategoryName)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editCategoryValue.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setEditingCategoryName(null);
+        setEditCategoryValue('');
+        refetchCategories();
+      } else {
+        alert(data.error || 'Failed to update category');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update category');
+    } finally {
+      setUpdatingCategory(false);
+    }
+  };
+
   useEffect(() => {
     fetch('/api/articles?admin=1')
       .then((res) => (res.ok ? res.json() : []))
@@ -167,6 +215,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
       .then((data) => setWritersList(Array.isArray(data) ? data : []))
       .catch(() => setWritersList([]))
       .finally(() => setWritersLoading(false));
+  }, []);
+
+  useEffect(() => {
+    setWriterRequestsLoading(true);
+    fetch('/api/writer-requests')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setWriterRequestsList(Array.isArray(data) ? data : []))
+      .catch(() => setWriterRequestsList([]))
+      .finally(() => setWriterRequestsLoading(false));
   }, []);
 
   useEffect(() => {
@@ -520,14 +577,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
                     {categoriesList.map((name) => (
                       <li key={name} className="flex items-center justify-between px-8 py-4 hover:bg-slate-50/50 transition">
                         <span className="text-sm font-bold text-slate-900">{name}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteCategory(name)}
-                          disabled={deletingCategory === name}
-                          className="px-4 py-2 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 border border-red-100 transition disabled:opacity-50"
-                        >
-                          {deletingCategory === name ? 'Removing…' : 'Remove'}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditCategory(name)}
+                            className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 border border-slate-200 transition"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(name)}
+                            disabled={deletingCategory === name}
+                            className="px-4 py-2 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 border border-red-100 transition disabled:opacity-50"
+                          >
+                            {deletingCategory === name ? 'Removing…' : 'Remove'}
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -601,26 +667,68 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
           )}
 
           {activeSection === 'TEAM' && (
-            <div className="space-y-8 animate-fade-in">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <p className="text-slate-500 font-medium">Manage writers and contributors.</p>
-                <button
-                  onClick={() => {
-                    setNewWriterForm({ name: '', role: '', bio: '', image: '', twitter: '', linkedin: '' });
-                    setAddWriterModalOpen(true);
-                  }}
-                  className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 transition"
-                >
-                  Add writer
-                </button>
-              </div>
-              {writersLoading ? (
-                <div className="bg-white rounded-[2.5rem] border border-slate-100 p-12 text-center text-slate-500 font-medium">
-                  Loading writers…
+            <div className="space-y-12 animate-fade-in">
+              {/* Writer requests (from DB) */}
+              <div>
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider mb-4">Writer requests</h3>
+                <p className="text-slate-500 font-medium text-sm mb-6">Applications from the become-a-writer form. Data from database.</p>
+                <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+                  {writerRequestsLoading ? (
+                    <div className="px-8 py-12 text-center text-slate-500 font-medium">Loading writer requests…</div>
+                  ) : writerRequestsList.length === 0 ? (
+                    <div className="px-8 py-12 text-center text-slate-500 font-medium">No writer requests yet.</div>
+                  ) : (
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                          <th className="px-8 py-6">Name</th>
+                          <th className="px-8 py-6">Email</th>
+                          <th className="px-8 py-6">Bio / Motivation</th>
+                          <th className="px-8 py-6">Topics</th>
+                          <th className="px-8 py-6">Status</th>
+                          <th className="px-8 py-6">Submitted</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {writerRequestsList.map((r) => (
+                          <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-8 py-6">
+                              <p className="text-sm font-black text-slate-900">{r.name}</p>
+                            </td>
+                            <td className="px-8 py-6 text-sm font-bold text-slate-600">{r.email}</td>
+                            <td className="px-8 py-6 max-w-[240px]">
+                              {r.bio && <p className="text-xs text-slate-600 line-clamp-2">{r.bio}</p>}
+                              {r.motivation && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{r.motivation}</p>}
+                              {!r.bio && !r.motivation && <span className="text-slate-400 text-xs">—</span>}
+                            </td>
+                            <td className="px-8 py-6 max-w-[160px]">
+                              <p className="text-xs text-slate-600 line-clamp-2">{r.topics || '—'}</p>
+                            </td>
+                            <td className="px-8 py-6">
+                              <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${
+                                r.status === 'PENDING' ? 'bg-amber-50 text-amber-700' : r.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'
+                              }`}>
+                                {r.status}
+                              </span>
+                            </td>
+                            <td className="px-8 py-6 text-xs font-bold text-slate-500">
+                              {new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
-              ) : writersList.length === 0 ? (
-                <div className="bg-white rounded-[2.5rem] border border-slate-100 p-12 text-center">
-                  <p className="text-slate-500 font-medium mb-4">No writers yet.</p>
+              </div>
+
+              {/* Writers (from DB) */}
+              <div>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Writers</h3>
+                    <p className="text-slate-500 font-medium text-sm mt-1">Team writers. Data from database.</p>
+                  </div>
                   <button
                     onClick={() => {
                       setNewWriterForm({ name: '', role: '', bio: '', image: '', twitter: '', linkedin: '' });
@@ -631,41 +739,59 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
                     Add writer
                   </button>
                 </div>
-              ) : (
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {writersList.map(w => (
-                  <div key={w.id} className="bg-white rounded-[2.5rem] border border-slate-100 p-8 shadow-sm hover:shadow-lg transition-all">
-                    <div className="flex items-start gap-4">
-                      <div className="w-14 h-14 rounded-2xl overflow-hidden border border-slate-100 flex-shrink-0 bg-slate-100">
-                        <img src={w.image || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt={w.name} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-base font-black text-slate-900 truncate">{w.name}</h4>
-                        {w.role && <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mt-0.5">{w.role}</p>}
-                        {w.bio && <p className="text-xs text-slate-500 mt-2 line-clamp-2">{w.bio}</p>}
-                        <p className="text-[10px] font-black text-slate-400 uppercase mt-3">{w.articlesCount} articles</p>
-                      </div>
-                    </div>
-                    <div className="mt-6 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openEditWriter(w)}
-                        className="flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setRemovingWriterId(w.id)}
-                        className="py-2.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 text-slate-400 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition"
-                      >
-                        Remove
-                      </button>
-                    </div>
+                {writersLoading ? (
+                  <div className="bg-white rounded-[2.5rem] border border-slate-100 p-12 text-center text-slate-500 font-medium">
+                    Loading writers…
                   </div>
-                ))}
+                ) : writersList.length === 0 ? (
+                  <div className="bg-white rounded-[2.5rem] border border-slate-100 p-12 text-center">
+                    <p className="text-slate-500 font-medium mb-4">No writers yet.</p>
+                    <button
+                      onClick={() => {
+                        setNewWriterForm({ name: '', role: '', bio: '', image: '', twitter: '', linkedin: '' });
+                        setAddWriterModalOpen(true);
+                      }}
+                      className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 transition"
+                    >
+                      Add writer
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    {writersList.map(w => (
+                      <div key={w.id} className="bg-white rounded-[2.5rem] border border-slate-100 p-8 shadow-sm hover:border-sky-200 transition-all">
+                        <div className="flex items-start gap-4">
+                          <div className="w-14 h-14 rounded-2xl overflow-hidden border border-slate-100 flex-shrink-0 bg-slate-100">
+                            <img src={w.image || PLACEHOLDER_IMAGE} className="w-full h-full object-cover" alt={w.name} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-base font-black text-slate-900 truncate">{w.name}</h4>
+                            {w.role && <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mt-0.5">{w.role}</p>}
+                            {w.bio && <p className="text-xs text-slate-500 mt-2 line-clamp-2">{w.bio}</p>}
+                            <p className="text-[10px] font-black text-slate-400 uppercase mt-3">{w.articlesCount} articles</p>
+                          </div>
+                        </div>
+                        <div className="mt-6 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditWriter(w)}
+                            className="flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRemovingWriterId(w.id)}
+                            className="py-2.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 text-slate-400 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              )}
             </div>
           )}
 
@@ -780,7 +906,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
                   { label: 'Published', value: publishedCount.toString(), sub: 'Live' },
                   { label: 'Writers', value: writersList.length.toString(), sub: 'Team' },
                 ].map((item, i) => (
-                  <div key={i} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden group hover:shadow-xl transition-all hover:-translate-y-1">
+                  <div key={i} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden group hover:border-sky-200 transition-all hover:-translate-y-1">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{item.label}</p>
                     <div className="flex items-baseline gap-3">
                       <h2 className="text-3xl font-black text-slate-900">{item.value}</h2>
@@ -1037,6 +1163,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
                 {removingWriterInProgress ? 'Removing…' : 'Remove writer'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Category Modal */}
+      {editingCategoryName !== null && (
+        <div className="fixed inset-0 z-[300] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-[3rem] p-10 max-w-md w-full animate-fade-up shadow-2xl">
+            <h3 className="text-2xl font-black text-slate-900 mb-6">Edit category</h3>
+            <form onSubmit={handleSaveEditCategory} className="space-y-6">
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Category name</label>
+                <input
+                  type="text"
+                  required
+                  value={editCategoryValue}
+                  onChange={(e) => setEditCategoryValue(e.target.value)}
+                  placeholder="e.g. Business (GTM)"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+                <p className="text-[10px] text-slate-400 font-medium mt-2">Articles using this category will be updated to the new name.</p>
+              </div>
+              <div className="flex gap-4">
+                <button
+                  type="button"
+                  onClick={() => { setEditingCategoryName(null); setEditCategoryValue(''); }}
+                  disabled={updatingCategory}
+                  className="flex-1 px-8 py-4 rounded-2xl text-xs font-black text-slate-400 hover:text-slate-900 uppercase tracking-widest border border-slate-200 hover:bg-slate-50 transition disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updatingCategory || !editCategoryValue.trim()}
+                  className="flex-1 bg-slate-900 text-white px-8 py-4 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 transition disabled:opacity-50"
+                >
+                  {updatingCategory ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

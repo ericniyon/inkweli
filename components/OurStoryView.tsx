@@ -26,7 +26,7 @@ const OurStoryView: React.FC<OurStoryViewProps> = ({ onGetStarted }) => {
       </section>
 
       <section className="py-24 px-6 bg-[#FDFCFB]">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-20">
+        <div className="max-w-[1600px] mx-auto grid grid-cols-1 md:grid-cols-2 gap-20">
           <div className="space-y-8">
             <h2 className="text-4xl font-black text-slate-900 tracking-tight">A living network of minds.</h2>
             <p className="text-lg text-slate-600 leading-relaxed font-medium Charter">

@@ -8,17 +8,18 @@ const ADMIN_SEED_PASSWORD = "admin123";
 async function main() {
   const adminPasswordHash = hashPassword(ADMIN_SEED_PASSWORD);
 
+  // Admin login: admin@thinkup.com / admin123. Admins see paywall until they have a paid subscription (tier UNLIMITED).
   await prisma.user.upsert({
     where: { id: "auth_admin" },
     create: {
       id: "auth_admin",
-      email: "admin@usethinkup.com",
+      email: "admin@thinkup.com",
       name: "Admin Editor",
       role: "ADMIN",
-      tier: "UNLIMITED",
+      tier: "NONE",
       passwordHash: adminPasswordHash,
     },
-    update: { passwordHash: adminPasswordHash },
+    update: { email: "admin@thinkup.com", passwordHash: adminPasswordHash, tier: "NONE" },
   });
 
   await prisma.user.upsert({
@@ -28,10 +29,10 @@ async function main() {
       email: "katurebe@inkwell.local",
       name: "Katurebe",
       role: "ADMIN",
-      tier: "UNLIMITED",
+      tier: "NONE",
       passwordHash: adminPasswordHash,
     },
-    update: { passwordHash: adminPasswordHash },
+    update: { passwordHash: adminPasswordHash, tier: "NONE" },
   });
 
   await prisma.subscriptionPlan.upsert({

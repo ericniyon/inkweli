@@ -2,7 +2,6 @@
 
 import React from "react";
 import Link from "next/link";
-import { PLACEHOLDER_IMAGE } from "@/constants";
 
 interface Writer {
   id: string;
@@ -21,10 +20,10 @@ const NavItem: React.FC<{
 }> = ({ icon, label, href }) => (
   <Link
     href={href}
-    className="flex flex-col items-center py-4 w-full text-zinc-500 hover:text-zinc-900 transition-colors"
+    className="flex items-center gap-3 py-3 px-4 w-full text-slate-600 hover:text-slate-900 hover:bg-slate-50/80 transition-colors rounded-lg"
   >
-    <span className="text-xl mb-1 [&>svg]:w-5 [&>svg]:h-5">{icon}</span>
-    <span className="text-[11px] font-medium">{label}</span>
+    <span className="shrink-0 [&>svg]:w-5 [&>svg]:h-5 text-slate-500">{icon}</span>
+    <span className="text-sm font-medium">{label}</span>
   </Link>
 );
 
@@ -53,50 +52,16 @@ const UserIcon = () => (
     <path strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
   </svg>
 );
-const PlusIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-  </svg>
-);
-
 export default function DetailSidebar({ writers }: DetailSidebarProps) {
   return (
-    <aside className="w-20 border-r border-zinc-100 h-screen fixed left-0 top-0 flex flex-col pt-14 bg-white hidden md:flex z-40">
-      <div className="flex-1 space-y-2">
-        <NavItem icon={<HouseIcon />} label="Home" href="/dashboard" />
-        <NavItem icon={<BookmarkIcon />} label="Library" href="/dashboard" />
-        <NavItem icon={<ListIcon />} label="Stories" href="/dashboard" />
-        <NavItem icon={<ChartIcon />} label="Stats" href="/dashboard" />
-        <NavItem icon={<UserIcon />} label="Profile" href="/dashboard" />
-      </div>
-
-      <div className="pb-8 px-2">
-        <div className="text-[10px] font-bold text-zinc-400 mb-4 text-center uppercase tracking-wider">
-          Following
-        </div>
-        <div className="flex flex-col items-center space-y-4">
-          {writers.slice(0, 3).map((user) => (
-            <Link
-              key={user.id}
-              href="/dashboard"
-              className="w-8 h-8 rounded-full border border-zinc-200 overflow-hidden hover:ring-2 hover:ring-zinc-100 transition-all block focus:outline-none focus:ring-2 focus:ring-zinc-200"
-            >
-              <img
-                src={user.image || PLACEHOLDER_IMAGE}
-                alt={user.name}
-                className="w-full h-full object-cover"
-              />
-            </Link>
-          ))}
-          <Link
-            href="/dashboard"
-            className="w-8 h-8 rounded-full border border-zinc-200 flex items-center justify-center text-zinc-400 hover:text-zinc-900 transition-colors"
-            aria-label="Add"
-          >
-            <PlusIcon />
-          </Link>
-        </div>
-      </div>
+    <aside className="w-52 border-r border-slate-100 h-screen fixed left-0 top-0 flex flex-col pt-20 pb-6 px-4 bg-white hidden md:flex z-40">
+      <nav className="flex-1 space-y-0.5">
+        <NavItem icon={<HouseIcon />} label="Home" href="/" />
+        <NavItem icon={<BookmarkIcon />} label="Library" href="/" />
+        <NavItem icon={<UserIcon />} label="Profile" href="/" />
+        <NavItem icon={<ListIcon />} label="Stories" href="/" />
+        <NavItem icon={<ChartIcon />} label="Stats" href="/" />
+      </nav>
     </aside>
   );
 }

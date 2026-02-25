@@ -1,18 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import Logo from './Logo';
 
 interface LoginViewProps {
+  /** Error message from URL to show on load */
+  initialError?: string | null;
   onLogin: (user: User) => void;
   onRegister: () => void;
   onForgotPassword: () => void;
 }
 
-const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onForgotPassword }) => {
+const LoginView: React.FC<LoginViewProps> = ({ initialError, onLogin, onRegister, onForgotPassword }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError ?? null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (initialError != null) setError(initialError);
+  }, [initialError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,9 +82,18 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onForgotPass
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="login-password" className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
-              Password
-            </label>
+            <div className="flex items-center justify-between">
+              <label htmlFor="login-password" className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+                Password
+              </label>
+              <button
+                type="button"
+                onClick={onForgotPassword}
+                className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-indigo-600 transition-colors"
+              >
+                Forgot password?
+              </button>
+            </div>
             <input
               id="login-password"
               type="password"

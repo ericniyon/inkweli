@@ -19,10 +19,10 @@ const ArchiveView: React.FC<ArchiveViewProps> = ({ onArticleClick }) => {
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-20">
-      <header className="mb-20 text-center">
-        <h1 className="text-5xl font-black text-slate-900 mb-6 tracking-tight">The Archive</h1>
-        <p className="text-xl text-slate-500 max-w-2xl mx-auto">Explore our collection of deep dives and insights from past editions.</p>
+    <div className="max-w-[1600px] mx-auto px-6 py-20">
+      <header className="mb-20 text-center font-charter">
+        <h1 className="text-medium-h1 md:text-4xl font-black text-slate-900 mb-6 tracking-tight">The Archive</h1>
+        <p className="text-medium-body text-slate-500 max-w-2xl mx-auto">Explore our collection of deep dives and insights from past editions.</p>
       </header>
 
       <div className="flex flex-col md:flex-row gap-8 mb-16 items-center justify-between">
@@ -52,30 +52,30 @@ const ArchiveView: React.FC<ArchiveViewProps> = ({ onArticleClick }) => {
 
       {filteredArticles.length === 0 ? (
         <div className="text-center py-32 bg-slate-50 rounded-[3rem] border border-slate-100 border-dashed">
-          <p className="text-slate-400 font-black uppercase tracking-widest text-sm">No stories found matching your criteria.</p>
+          <p className="text-slate-400 font-charter font-black uppercase tracking-widest text-medium-meta">No stories found matching your criteria.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-1 border-y border-slate-100 divide-y divide-slate-100">
+        <div className="grid grid-cols-1 gap-6">
           {filteredArticles.map(article => (
             <div 
               key={article.id} 
-              className="group py-10 flex flex-col md:flex-row items-start gap-12 cursor-pointer hover:bg-slate-50/50 transition-colors px-6 rounded-3xl"
+              className="group py-8 px-6 md:p-8 flex flex-col md:flex-row items-start gap-10 bg-white border border-slate-100 rounded-2xl shadow-md hover:border-sky-200 hover:-translate-y-0.5 transition-all duration-300 ease-out cursor-pointer font-charter"
               onClick={() => onArticleClick(article)}
             >
               <div className="w-full md:w-64 flex-shrink-0">
-                <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4">{article.publishDate}</p>
-                <div className="aspect-[4/3] rounded-2xl overflow-hidden shadow-md">
-                   <img src={article.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
+                <p className="text-medium-meta font-black text-slate-400 uppercase tracking-[0.2em] mb-4">{article.publishDate}</p>
+                <div className="aspect-[4/3] rounded-xl overflow-hidden shadow-md border border-slate-100 ring-1 ring-slate-100 group-hover:ring-slate-200 transition-all duration-300">
+                   <img src={article.featuredImage || PLACEHOLDER_IMAGE} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out" alt="" />
                 </div>
               </div>
-              <div className="flex-grow pt-2">
-                <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-3">Society & Culture</p>
-                <h3 className="text-3xl font-black text-slate-900 leading-tight mb-4 group-hover:text-indigo-600 transition-colors">{article.title}</h3>
-                <p className="text-slate-500 leading-relaxed max-w-2xl mb-6 font-medium">{article.excerpt}</p>
-                <div className="flex items-center gap-4">
-                  <span className="text-xs font-bold text-slate-700">By {article.authorName}</span>
-                  <span className="text-slate-200 text-xs">•</span>
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{article.readingTime} MIN READ</span>
+              <div className="flex-grow pt-2 min-w-0">
+                <p className="text-medium-small font-black text-indigo-600 uppercase tracking-widest mb-3">Society & Culture</p>
+                <h3 className="text-medium-h1 font-black text-slate-900 leading-tight mb-4 group-hover:text-indigo-600 transition-colors duration-200">{article.title}</h3>
+                <p className="text-medium-body text-slate-500 leading-relaxed max-w-2xl mb-6 font-medium">{article.excerpt}</p>
+                <div className="flex items-center gap-4 text-medium-meta">
+                  <span className="font-bold text-slate-700">By {article.authorName}</span>
+                  <span className="text-slate-200">•</span>
+                  <span className="font-bold text-slate-400 uppercase tracking-widest">{article.readingTime} MIN READ</span>
                 </div>
               </div>
             </div>

@@ -90,7 +90,7 @@ export default function DashboardFeed({
             </div>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-4">
             {articles.length === 0 ? (
               <div className="py-12 text-center text-zinc-500 text-sm">No stories yet.</div>
             ) : (

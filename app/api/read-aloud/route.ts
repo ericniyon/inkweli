@@ -1,5 +1,17 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Modality } from "@google/genai";
+import { prisma } from "@/lib/prisma";
+
+/** Get plain text for the first N paragraphs (for free listen preview). */
+function getFirstParagraphPlainText(html: string): string {
+  const regex = /<p[^>]*>([\s\S]*?)<\/p>/i;
+  const match = (html || "").match(regex);
+  if (match) {
+    return match[1].replace(/<[^>]*>?/gm, " ").replace(/\s+/g, " ").trim();
+  }
+  const plain = (html || "").replace(/<[^>]*>?/gm, " ").replace(/\s+/g, " ").trim();
+  return plain.slice(0, 500) || plain;
+}
 
 export async function POST(request: Request) {
   const apiKey = process.env.API_KEY;
@@ -12,9 +24,32 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { title = "", content = "" } = body;
-    const plainText = (content || "").replace(/<[^>]*>?/gm, "").trim();
-    const prompt = `Read this article in a calm, professional tone: ${title}. ${plainText}`;
+    const { title = "", content = "", userId } = body;
+
+    let textToRead: string;
+    const fullPlainText = (content || "").replace(/<[^>]*>?/gm, " ").replace(/\s+/g, " ").trim();
+
+    if (userId && typeof userId === "string") {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { tier: true },
+      });
+      if (user?.tier === "UNLIMITED") {
+        textToRead = fullPlainText;
+      } else {
+        const firstParagraph = getFirstParagraphPlainText(content || "");
+        textToRead = firstParagraph
+          ? `${firstParagraph} To listen to the full article, become an annual subscriber.`
+          : fullPlainText.slice(0, 500);
+      }
+    } else {
+      const firstParagraph = getFirstParagraphPlainText(content || "");
+      textToRead = firstParagraph
+        ? `${firstParagraph} To listen to the full article, become an annual subscriber.`
+        : fullPlainText.slice(0, 500);
+    }
+
+    const prompt = `Read this article in a calm, professional tone: ${title}. ${textToRead}`;
 
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({

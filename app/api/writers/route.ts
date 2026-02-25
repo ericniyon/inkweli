@@ -3,21 +3,39 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    const writers = await prisma.writer.findMany({
-      orderBy: { createdAt: "desc" },
+    const [writers, articleCountsByAuthor, users] = await Promise.all([
+      prisma.writer.findMany({ orderBy: { createdAt: "desc" } }),
+      prisma.article.groupBy({
+        by: ["authorId"],
+        _count: { id: true },
+      }),
+      prisma.user.findMany({ select: { id: true, name: true } }),
+    ]);
+
+    const countByUserId = new Map(
+      articleCountsByAuthor.map((row) => [row.authorId, row._count.id])
+    );
+    const userIdByName = new Map(
+      users.map((u) => [u.name.trim().toLowerCase(), u.id])
+    );
+
+    const withSocials = writers.map((w) => {
+      const userId = userIdByName.get(w.name.trim().toLowerCase());
+      const articlesCount =
+        userId != null ? countByUserId.get(userId) ?? 0 : w.articlesCount;
+      return {
+        id: w.id,
+        name: w.name,
+        role: w.role ?? undefined,
+        bio: w.bio ?? undefined,
+        image: w.image ?? undefined,
+        articlesCount,
+        socials: {
+          twitter: w.twitter ?? "#",
+          linkedin: w.linkedin ?? "#",
+        },
+      };
     });
-    const withSocials = writers.map((w) => ({
-      id: w.id,
-      name: w.name,
-      role: w.role ?? undefined,
-      bio: w.bio ?? undefined,
-      image: w.image ?? undefined,
-      articlesCount: w.articlesCount,
-      socials: {
-        twitter: w.twitter ?? "#",
-        linkedin: w.linkedin ?? "#",
-      },
-    }));
     return NextResponse.json(withSocials);
   } catch (e) {
     console.error("GET /api/writers", e);

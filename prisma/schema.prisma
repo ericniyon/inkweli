@@ -27,6 +27,7 @@ model User {
   highlights     Highlight[]
   responses      Response[]
   claps          Clap[]
+  passwordResetTokens PasswordResetToken[]
 }
 
 model Writer {
@@ -167,6 +168,31 @@ model SiteCategory {
   name      String   @unique
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+}
+
+model WriterRequest {
+  id          String   @id @default(cuid())
+  name        String   @map("name")
+  email       String   @unique @map("email")
+  bio         String?  @map("bio")
+  motivation  String?  @map("motivation")
+  topics      String?  @map("topics")
+  status      String   @default("PENDING") @map("status")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("writer_requests")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
 }
 
 enum UserRole {

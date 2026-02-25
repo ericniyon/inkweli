@@ -21,7 +21,7 @@ const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, onCance
 
     // Mock admin authentication
     setTimeout(() => {
-      if (email === 'admin@usethinkup.com' && password === 'admin') {
+      if ((email === 'admin@thinkup.com' || email === 'admin@usethinkup.com') && password === 'admin') {
         onLoginSuccess();
       } else {
         setError('Invalid administrator credentials. Access restricted to authorized staff.');
@@ -92,7 +92,7 @@ const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, onCance
                 <span className="text-[10px] font-black text-indigo-900 uppercase tracking-widest">Test Access</span>
               </div>
               <p className="text-[11px] text-indigo-700 font-medium">
-                Email: <span className="font-bold select-all">admin@usethinkup.com</span><br/>
+                Email: <span className="font-bold select-all">admin@thinkup.com</span><br/>
                 Password: <span className="font-bold select-all">admin</span>
               </p>
             </div>

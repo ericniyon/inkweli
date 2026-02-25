@@ -1,17 +1,67 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Article, Highlight, User, Response, SubscriptionTier } from '../types';
+import type { WriterItem } from '@/lib/articles-server';
 import { PLACEHOLDER_IMAGE } from '../constants';
 import OptimizedImage from './OptimizedImage';
 import GeminiAssistant from './GeminiAssistant';
 import ResponsesDrawer from './ResponsesDrawer';
 import HighlightDrawer from './HighlightDrawer';
+import { RelatedArticleCardCompact } from './RelatedArticleCard';
 
-/** Returns the first paragraph of HTML content for teaser / paywall */
-function getFirstParagraphHtml(html: string): string {
-  const match = html.match(/<p>([\s\S]*?)<\/p>/i);
-  if (match) return `<p>${match[1]}</p>`;
-  return html.slice(0, 600) || html;
+/** Min and max paragraphs shown for free before the paywall (4–5) */
+const FREE_PREVIEW_PARAGRAPHS_MIN = 4;
+const FREE_PREVIEW_PARAGRAPHS_MAX = 5;
+
+/** Stable per-article value in [min, max] so different articles can show 2, 3, or 4 free paragraphs */
+function getFreePreviewParagraphCount(articleId: string): number {
+  const n = FREE_PREVIEW_PARAGRAPHS_MAX - FREE_PREVIEW_PARAGRAPHS_MIN + 1;
+  const hash = articleId.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+  return FREE_PREVIEW_PARAGRAPHS_MIN + (Math.abs(hash) % n);
+}
+
+/** True if the HTML block has meaningful text content (not just images/tags) */
+function hasTextContent(html: string): boolean {
+  const text = html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  return text.length >= 10;
+}
+
+/** Returns the first N text paragraphs; images and image-only blocks are not counted as paragraphs. */
+function getFirstNParagraphsHtml(html: string, n: number): string {
+  const trimmed = (html || '').trim();
+  if (!trimmed) return '';
+
+  const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+  let textParagraphCount = 0;
+  let endIndex = 0;
+
+  for (const m of trimmed.matchAll(pRegex)) {
+    const fullMatch = m[0];
+    const inner = m[1] || '';
+    if (hasTextContent(inner)) {
+      textParagraphCount++;
+      endIndex = m.index! + fullMatch.length;
+      if (textParagraphCount >= n) break;
+    }
+  }
+
+  if (textParagraphCount >= n && endIndex > 0) {
+    return trimmed.slice(0, endIndex);
+  }
+
+  if (textParagraphCount > 0) {
+    return trimmed.slice(0, endIndex || trimmed.length);
+  }
+
+  // No <p> tags or no text in them: plain text by double newlines
+  const blocks = trimmed.split(/\n\s*\n/).filter((b) => b.trim().length > 0);
+  if (blocks.length > 0) {
+    const firstN = blocks.slice(0, n);
+    return firstN.map((block) => `<p>${block.trim().replace(/\n/g, '<br>')}</p>`).join('');
+  }
+
+  const fallback = trimmed.slice(0, 1200).trim();
+  return fallback ? `<p>${fallback.replace(/\n/g, '<br>')}</p>` : trimmed;
 }
 
 /** Decode common HTML entities so highlight plain text can match content */
@@ -41,6 +91,8 @@ interface ArticleReaderProps {
   isLimitedAccess?: boolean;
   /** Called when user taps "Read More" to go to payment packages */
   onReadMoreClick?: () => void;
+  /** Writers list for author bio (optional) */
+  writers?: WriterItem[];
 }
 
 // Audio Decoding Helpers
@@ -85,8 +137,14 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
   onToggleFollow,
   isLimitedAccess = false,
   onReadMoreClick,
+  writers = [],
 }) => {
-  const isGuest = isLimitedAccess; // for existing handlers that check isGuest
+  const isGuest = isLimitedAccess;
+  const hasFullListen = !isGuest && currentUser.tier === SubscriptionTier.UNLIMITED;
+  const author = useMemo(
+    () => writers.find((w) => w.id === article.authorId),
+    [writers, article.authorId]
+  ); // for existing handlers that check isGuest
   const [claps, setClaps] = useState(article.claps);
   const [hasClapped, setHasClapped] = useState(article.hasClapped ?? false);
   const [progress, setProgress] = useState(0);
@@ -171,7 +229,11 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
       const res = await fetch('/api/read-aloud', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: article.title, content: article.content }),
+        body: JSON.stringify({
+          title: article.title,
+          content: article.content,
+          ...(isGuest ? {} : { userId: currentUser.id }),
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || 'Failed to generate audio');
@@ -311,8 +373,15 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
     }
   };
 
+  const freePreviewParagraphs = useMemo(
+    () => getFreePreviewParagraphCount(article.id),
+    [article.id]
+  );
+
   const highlightedContent = useMemo(() => {
-    let content = isLimitedAccess ? getFirstParagraphHtml(article.content) : article.content;
+    let content = isLimitedAccess ? getFirstNParagraphsHtml(article.content, freePreviewParagraphs) : article.content;
+    // Preserve newlines/line breaks (HTML collapses \n when parsed)
+    content = content.replace(/\n/g, '<br>');
     content = decodeHtmlEntities(content);
 
     // 1. Process Highlights: group by normalized text; match in decoded HTML with flexible whitespace
@@ -350,7 +419,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
     });
     
     return content;
-  }, [article.content, highlights, isLimitedAccess]);
+  }, [article.content, highlights, isLimitedAccess, freePreviewParagraphs]);
 
   const handleContentClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -396,77 +465,89 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
         <div className="h-full bg-slate-900 transition-all duration-100" style={{ width: `${progress}%` }} />
       </div>
 
-      <article className="w-full max-w-screen-md mx-auto px-4 sm:px-6 md:px-8 pt-12 md:pt-16">
-        <header className="mb-12">
-          <div className="flex items-center gap-2 mb-8">
-            <svg className="w-4 h-4 text-yellow-500 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
-            <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Member-only story</span>
-          </div>
-
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-slate-900 mb-6 leading-[1.15] tracking-tight Charter">
-            {article.title}
-          </h1>
-
-          <p className="text-xl text-slate-500 Charter leading-relaxed italic mb-10">
-            {article.excerpt}
-          </p>
-
-          <div className="flex items-center justify-between py-6 border-y border-slate-100 mb-12">
-             <div className="flex items-center gap-4">
-                <button onClick={() => onAuthorClick(article.authorId)} className="w-12 h-12 rounded-full overflow-hidden border border-slate-100 transition-transform hover:scale-105 active:scale-95">
-                   <OptimizedImage src={article.authorAvatar || PLACEHOLDER_IMAGE} alt={article.authorName} width={48} height={48} className="w-full h-full object-cover" />
+      <div className="max-w-[900px] mx-auto px-4 sm:px-6 lg:px-8 pt-8 md:pt-12">
+        <article className="min-w-0">
+          <header className="mb-10">
+            <h1 className="font-charter font-black text-slate-900 text-2xl sm:text-3xl md:text-4xl leading-tight tracking-tight mb-4">
+              {article.title}
+            </h1>
+            <p className="font-charter text-slate-600 text-base sm:text-lg leading-relaxed mb-8">
+              {article.excerpt}
+            </p>
+            <div className="flex flex-wrap items-center justify-between gap-4 py-4 border-t border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <button onClick={() => onAuthorClick(article.authorId)} className="w-10 h-10 rounded-full overflow-hidden border border-slate-200 shrink-0">
+                  <OptimizedImage src={article.authorAvatar || PLACEHOLDER_IMAGE} alt={article.authorName} width={40} height={40} className="w-full h-full object-cover" />
                 </button>
-                <div className="text-left">
-                   <div className="flex items-center gap-3">
-                     <p className="font-bold text-slate-900 text-sm hover:underline cursor-pointer" onClick={() => onAuthorClick(article.authorId)}>{article.authorName}</p>
-                     <button 
-                      onClick={onToggleFollow}
-                      className={`text-sm font-bold transition px-3 py-0.5 rounded-full border ${isFollowing ? 'text-slate-400 border-slate-100' : 'text-emerald-600 border-emerald-100 hover:bg-emerald-50'}`}
-                     >
-                       {isFollowing ? 'Following' : 'Follow'}
-                     </button>
-                   </div>
-                   <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
-                     <span>{article.publishDate}</span>
-                     <span>•</span>
-                     <span>{article.readingTime} min read</span>
-                   </div>
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <p className="font-charter font-bold text-slate-900 text-sm cursor-pointer hover:underline" onClick={() => onAuthorClick(article.authorId)}>{article.authorName}</p>
+                  <button
+                    onClick={onToggleFollow}
+                    className={`font-charter text-xs font-bold transition px-2.5 py-1 rounded-full border ${isFollowing ? 'text-slate-400 border-slate-200' : 'text-slate-700 border-slate-300 hover:bg-slate-50'}`}
+                  >
+                    {isFollowing ? 'Following' : 'Follow'}
+                  </button>
+                  <span className="text-slate-400 text-sm">·</span>
+                  <span className="font-charter text-slate-500 text-sm">{article.readingTime} min read</span>
+                  <span className="text-slate-400 text-sm">·</span>
+                  <span className="font-charter text-slate-500 text-sm">{article.publishDate}</span>
                 </div>
-             </div>
-             <div className="flex items-center gap-4">
-                <button 
-                  onClick={handleListen}
-                  disabled={isAudioLoading}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all ${isAudioPlaying ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
-                >
-                  {isAudioLoading ? (
-                    <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
-                  ) : isAudioPlaying ? (
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
-                  )}
-                  {isAudioLoading ? 'Preparing...' : isAudioPlaying ? 'Stop Listening' : 'Listen'}
-                </button>
-                <div className="h-4 w-px bg-slate-200 mx-2" />
-                <button className="text-slate-400 hover:text-slate-900 transition"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M24 11.5c0 5.955-4.823 10.78-10.776 10.78-5.953 0-10.776-4.825-10.776-10.78C2.448 5.544 7.27 .72 13.224.72 19.177.72 24 5.544 24 11.5z" strokeWidth="2" /></svg></button>
-                <button className="text-slate-400 hover:text-slate-900 transition"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" strokeWidth="2"/></svg></button>
-             </div>
-          </div>
-        </header>
+              </div>
+              <div className="flex items-center gap-4 sm:gap-6">
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={handleClap}
+                    disabled={hasClapped || isGuest}
+                    className={`flex items-center gap-1.5 font-charter text-sm font-bold transition ${hasClapped ? 'text-slate-700' : isGuest ? 'text-slate-400 cursor-not-allowed' : 'text-slate-600 hover:text-slate-900'}`}
+                  >
+                    <svg className="w-5 h-5" fill={hasClapped ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M14 10h4.757c1.246 0 2.257 1.01 2.257 2.257 0 .307-.061.611-.182.894l-2.9 6.767c-.271.633-.893 1.039-1.58 1.039H8.435c-.943 0-1.706-.763-1.706-1.706V10.706c0-.452.18-.886.5-1.206l5.206-5.206a1.706 1.706 0 012.413 2.413L14 10z" /></svg>
+                    {claps >= 1000 ? `${(claps / 1000).toFixed(1)}K` : claps.toLocaleString()}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => (isLimitedAccess ? onReadMoreClick?.() : setIsResponsesOpen(true))}
+                    className="flex items-center gap-1.5 font-charter text-sm font-bold text-slate-600 hover:text-slate-900"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                    {responses.length}
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={onToggleBookmark} className="p-1.5 text-slate-500 hover:text-slate-900 transition" aria-label={isBookmarked ? 'Remove bookmark' : 'Bookmark'}>
+                    <svg className="w-5 h-5" fill={isBookmarked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleListen}
+                    disabled={isAudioLoading}
+                    title={hasFullListen ? "Listen to full article" : "Listen to first paragraph (full article for annual subscribers)"}
+                    className="p-1.5 text-slate-500 hover:text-slate-900 transition"
+                    aria-label={hasFullListen ? "Listen to full article" : "Listen to first paragraph"}
+                  >
+                    {isAudioLoading ? <div className="w-5 h-5 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" /> : isAudioPlaying ? <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> : <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3z"/></svg>}
+                  </button>
+                  <button type="button" onClick={handleShare} className="p-1.5 text-slate-500 hover:text-slate-900 transition" aria-label="Share">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                  </button>
+                  <button type="button" className="p-1.5 text-slate-500 hover:text-slate-900 transition" aria-label="More">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" /></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </header>
 
-        <div className="mb-12 -mx-4 md:-mx-6 lg:-mx-12 rounded-xl overflow-hidden shadow-2xl bg-slate-100 relative h-[400px] md:h-[500px]">
-          <OptimizedImage
-            src={article.featuredImage || PLACEHOLDER_IMAGE}
-            alt=""
-            fill
-            sizes="(max-width: 768px) 100vw, 1200px"
-            className="object-cover"
-          />
-        </div>
+          {/* Author bio below header, optional */}
+          {(author?.bio || author?.role) && (
+            <div className="rounded-lg bg-slate-50 border border-slate-100 p-4 mb-10">
+              {author?.role && <p className="font-charter text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">{author.role}</p>}
+              {author?.bio && <p className="font-charter text-sm text-slate-600 leading-relaxed">{author.bio}</p>}
+            </div>
+          )}
 
-        <div className="relative">
-          {/* Floating toolbar when text is selected */}
+          <div className="relative">
+            {/* Floating toolbar when text is selected */}
           {selectionRange && !isHighlightDrawerOpen && (
             <div
               data-selection-toolbar
@@ -480,7 +561,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
               <button
                 type="button"
                 onClick={() => setIsHighlightDrawerOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-slate-900 text-sm font-bold hover:bg-slate-100 transition-colors"
+                className="font-charter flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-slate-900 text-medium-meta font-bold hover:bg-slate-100 transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -515,7 +596,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
                   setSelectionRange(null);
                   window.getSelection()?.removeAllRanges();
                 }}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-500 transition-colors"
+                className="font-charter flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-medium-meta font-bold hover:bg-emerald-500 transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -528,149 +609,82 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
                   setSelectionRange(null);
                   window.getSelection()?.removeAllRanges();
                 }}
-                className="px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 text-sm font-medium transition-colors"
+                className="font-charter px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 text-medium-meta font-medium transition-colors"
               >
                 Cancel
               </button>
             </div>
           )}
 
-          <div 
-            ref={contentRef}
-            onClick={handleContentClick}
-            className="article-content text-slate-800 Charter leading-[1.8] selection:bg-emerald-100/60"
-            style={isLimitedAccess ? { marginBottom: 0 } : undefined}
-            dangerouslySetInnerHTML={{ __html: highlightedContent }}
-          />
-          {isLimitedAccess && onReadMoreClick && (
-            <div className="mt-8 rounded-2xl border border-slate-100 bg-slate-50/80 backdrop-blur-sm p-8 md:p-10 text-center shadow-lg">
-              <div className="max-w-md mx-auto space-y-6">
-                <h3 className="text-xl font-black text-slate-900 tracking-tight">Continue reading</h3>
-                <p className="text-slate-600 Charter leading-relaxed">
-                  Unlock full access with an annual package to read all articles.
-                </p>
-                <button
-                  type="button"
-                  onClick={onReadMoreClick}
-                  className="px-8 py-3 rounded-full bg-slate-900 text-white text-sm font-bold hover:bg-slate-800 transition"
-                >
-                  Read More
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {!isGuest && <div className="mb-32" />}
-
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/90 backdrop-blur-md border border-slate-100 shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-full px-8 py-3.5 flex items-center justify-between z-50 animate-fade-up">
-           <div className="flex items-center gap-8">
-              <button
-                type="button"
-                onClick={handleClap}
-                disabled={hasClapped || isGuest}
-                className={`group flex items-center gap-2 transition ${
-                  hasClapped
-                    ? 'text-emerald-600 cursor-default'
-                    : isGuest
-                    ? 'text-slate-400 cursor-not-allowed'
-                    : 'text-slate-400 hover:text-slate-900'
-                }`}
-                aria-label={hasClapped ? 'You clapped this article' : 'Clap this article'}
-              >
-                <svg
-                  className={`w-6 h-6 transition-transform ${hasClapped ? '' : 'group-hover:scale-110'}`}
-                  fill={hasClapped ? 'currentColor' : 'none'}
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M14 10h4.757c1.246 0 2.257 1.01 2.257 2.257 0 .307-.061.611-.182.894l-2.9 6.767c-.271.633-.893 1.039-1.58 1.039H8.435c-.943 0-1.706-.763-1.706-1.706V10.706c0-.452.18-.886.5-1.206l5.206-5.206a1.706 1.706 0 012.413 2.413L14 10zM6.729 10H4.413C3.47 10 2.706 10.763 2.706 11.706v7.588c0 .943.763 1.706 1.706 1.706h2.318" strokeWidth="2" />
-                </svg>
-                <span className="text-sm font-bold tracking-tight">{claps.toLocaleString()}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => (isLimitedAccess ? onReadMoreClick?.() : setIsResponsesOpen(true))}
-                className="group flex items-center gap-2 text-slate-400 hover:text-slate-900 transition"
-              >
-                 <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" strokeWidth="2"/></svg>
-                 <span className="text-sm font-bold tracking-tight">{responses.length}</span>
-              </button>
-           </div>
-           <div className="flex items-center gap-8">
-              <button
-                type="button"
-                onClick={onToggleBookmark}
-                className={`transition group ${isBookmarked ? 'text-emerald-500' : 'text-slate-400 hover:text-slate-900'}`}
-                aria-label={isBookmarked ? 'Remove bookmark' : 'Bookmark'}
-              >
-                <svg className={`w-6 h-6 group-hover:scale-110 transition-transform ${isBookmarked ? 'fill-current' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" strokeWidth="2"/></svg>
-              </button>
-              <button type="button" onClick={handleShare} className="text-slate-400 hover:text-slate-900 transition group" aria-label="Share">
-                <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" strokeWidth="2"/></svg>
-              </button>
-           </div>
-        </div>
-      </article>
-
-      <section className="bg-slate-50 border-y border-slate-100 mt-20 py-24">
-        <div className="max-w-screen-md mx-auto px-6">
-           {moreFromAuthor.length > 0 && (
-             <div className="mb-20">
-               <div className="flex items-center justify-between mb-10">
-                 <div>
-                   <h2 className="text-2xl font-black text-slate-900 tracking-tight">More from {article.authorName}</h2>
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Written by the same author</p>
-                 </div>
-                 <button className="text-sm font-bold text-emerald-600 hover:text-emerald-700 transition" onClick={() => onAuthorClick(article.authorId)}>See all</button>
-               </div>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                 {moreFromAuthor.map(art => (
-                   <div key={art.id} className="group cursor-pointer" onClick={() => onArticleClick(art)}>
-                      <div className="aspect-video rounded-2xl overflow-hidden mb-4 border border-slate-100 bg-slate-200 shadow-sm relative">
-                        <OptimizedImage src={art.featuredImage || PLACEHOLDER_IMAGE} alt={art.title} fill sizes="(max-width: 768px) 100vw, 50vw" className="object-cover group-hover:scale-105 transition-transform duration-500" />
-                      </div>
-                      <h3 className="text-lg font-black text-slate-900 leading-tight mb-2 Charter group-hover:text-indigo-600 transition-colors line-clamp-2">{art.title}</h3>
-                      <div className="flex items-center gap-3 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                        <span>{art.publishDate}</span>
-                        <span>•</span>
-                        <span>{art.readingTime} min read</span>
-                      </div>
-                   </div>
-                 ))}
-               </div>
-             </div>
-           )}
-
-           <div>
-              <div className="flex items-center justify-between mb-10">
-                <div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">More from {article.category}</h2>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Recommended in this section</p>
+          <div className="relative">
+            <div
+              ref={contentRef}
+              onClick={handleContentClick}
+              className="article-content font-charter text-slate-800 leading-[1.8] selection:bg-emerald-100/60"
+              style={isLimitedAccess ? { marginBottom: 0 } : undefined}
+              dangerouslySetInnerHTML={{ __html: highlightedContent }}
+            />
+            {/* Pay-to-continue overlay: only for unpaid users (isLimitedAccess), after 4–5 free paragraphs */}
+            {isLimitedAccess && onReadMoreClick && (
+              <div className="relative mt-10 pb-12 min-h-[380px] flex flex-col items-center justify-center">
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/90 to-white pointer-events-none" aria-hidden />
+                <div className="relative z-10 max-w-2xl mx-auto rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+                  <div className="absolute inset-0 bg-white/95 backdrop-blur-sm pointer-events-none rounded-2xl" aria-hidden />
+                  <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-transparent to-slate-900/10 pointer-events-none rounded-2xl" aria-hidden />
+                  <div className="relative z-10 text-center px-6 sm:px-10 py-8 sm:py-10">
+                    <h2 className="font-charter text-2xl md:text-3xl font-black text-slate-900 tracking-tight mb-4">
+                      Pay to continue reading the full story
+                    </h2>
+                    <p className="font-charter text-slate-600 text-base md:text-lg leading-relaxed mb-8">
+                      You&apos;ve read the free preview. To read the rest of this article you need either a paid ThinkUp membership or an annual subscription.
+                    </p>
+                    <Link
+                      href="/membership"
+                      className="font-charter inline-block px-8 py-3.5 rounded-full bg-slate-900 text-white text-base font-bold hover:bg-slate-800 transition shadow-lg hover:shadow-xl"
+                    >
+                      Pay to read full story
+                    </Link>
+                  </div>
                 </div>
               </div>
-              <div className="space-y-8">
-                 {moreFromCategory.map(art => (
-                   <div key={art.id} className="flex gap-6 group cursor-pointer" onClick={() => onArticleClick(art)}>
-                      <div className="w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 border border-slate-100 bg-slate-200 relative">
-                         <OptimizedImage src={art.featuredImage || PLACEHOLDER_IMAGE} alt={art.title} fill sizes="96px" className="object-cover" />
-                      </div>
-                      <div className="flex-grow py-1">
-                         <div className="flex items-center gap-2 mb-2">
-                           <OptimizedImage src={art.authorAvatar || PLACEHOLDER_IMAGE} alt={art.authorName} width={16} height={16} className="w-4 h-4 rounded-full object-cover" />
-                           <span className="text-[10px] font-bold text-slate-900">{art.authorName}</span>
-                         </div>
-                         <h3 className="text-lg font-black text-slate-900 leading-tight Charter group-hover:text-indigo-600 transition-colors line-clamp-2">{art.title}</h3>
-                      </div>
-                   </div>
-                 ))}
-                 {moreFromCategory.length === 0 && (
-                   <div className="py-12 text-center text-slate-400 italic text-sm">No other stories in this category yet.</div>
-                 )}
+            )}
+          </div>
+          </div>
+
+          {!isGuest && <div className="mb-24" />}
+
+          {/* Related: below article body, single column */}
+          <footer className="mt-16 pt-10 border-t border-slate-100">
+            {moreFromAuthor.length > 0 && (
+              <div id="more-from-author" className="scroll-mt-24 mb-10">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-charter text-sm font-bold uppercase tracking-widest text-slate-500">More from {article.authorName}</h2>
+                  <button type="button" onClick={() => onAuthorClick(article.authorId)} className="font-charter text-sm font-bold text-slate-600 hover:text-slate-900">
+                    See all
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  {moreFromAuthor.map((art) => (
+                    <RelatedArticleCardCompact key={art.id} article={art} onClick={() => onArticleClick(art)} />
+                  ))}
+                </div>
               </div>
-           </div>
-        </div>
-      </section>
+            )}
+            <div>
+              <h2 className="font-charter text-sm font-bold uppercase tracking-widest text-slate-500 mb-4">More from {article.category}</h2>
+              {moreFromCategory.length > 0 ? (
+                <div className="space-y-4">
+                  {moreFromCategory.map((art) => (
+                    <RelatedArticleCardCompact key={art.id} article={art} onClick={() => onArticleClick(art)} />
+                  ))}
+                </div>
+              ) : (
+                <p className="font-charter text-sm text-slate-400 italic py-4">No other stories in this category yet.</p>
+              )}
+            </div>
+          </footer>
+        </article>
+      </div>
 
       {/* Highlight Side Drawer: comment on selected text */}
       <HighlightDrawer 
@@ -699,7 +713,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
           <div className="relative w-full max-w-lg bg-white h-full shadow-[0_0_80px_rgba(0,0,0,0.08)] flex flex-col animate-in slide-in-from-right duration-300 ease-out border-l border-slate-100">
             <header className="px-8 py-6 flex justify-between items-center border-b border-slate-100 bg-white shrink-0">
               <div>
-                <h2 className="text-xl font-black text-slate-900 tracking-tight">Community notes</h2>
+                <h2 className="font-charter text-medium-h2 font-black text-slate-900 tracking-tight">Community notes</h2>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
                   {activeHighlights.length} {activeHighlights.length === 1 ? 'note' : 'notes'} on this passage
                 </p>
@@ -717,7 +731,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
             <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
               <div className="bg-green-50 border-l-4 border-green-400 p-5 rounded-r-xl">
                 <p className="text-[10px] font-bold text-green-800 uppercase tracking-wider mb-2">Highlighted passage</p>
-                <p className="text-sm text-slate-700 italic Charter leading-relaxed">
+                <p className="font-charter text-medium-meta text-slate-700 italic leading-relaxed">
                   &ldquo;{activeHighlights[0].text}&rdquo;
                 </p>
               </div>
@@ -730,8 +744,8 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
                         <OptimizedImage src={h.userAvatar || PLACEHOLDER_IMAGE} alt={h.userName} width={40} height={40} className="w-full h-full object-cover" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-slate-900 leading-none">{h.userName}</p>
-                        <p className="text-sm text-slate-700 leading-relaxed Charter mt-2">{h.comment}</p>
+                        <p className="font-charter text-medium-meta font-bold text-slate-900 leading-none">{h.userName}</p>
+                        <p className="font-charter text-medium-meta text-slate-700 leading-relaxed mt-2">{h.comment}</p>
                       </div>
                     </div>
                   ))}
