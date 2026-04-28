@@ -1,9 +1,12 @@
 {
   "/api/site-settings/route": "app/api/site-settings/route.js",
-  "/api/auth/login/route": "app/api/auth/login/route.js",
-  "/dashboard/page": "app/dashboard/page.js",
+  "/api/subscription-plans/[id]/route": "app/api/subscription-plans/[id]/route.js",
+  "/api/subscription-plans/route": "app/api/subscription-plans/route.js",
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/api/auth/me/route": "app/api/auth/me/route.js",
+  "/page": "app/page.js",
   "/(marketing)/login/page": "app/(marketing)/login/page.js",
-  "/(marketing)/register/page": "app/(marketing)/register/page.js",
-  "/(marketing)/forgot-password/page": "app/(marketing)/forgot-password/page.js",
-  "/(marketing)/membership/page": "app/(marketing)/membership/page.js"
+  "/(marketing)/membership/page": "app/(marketing)/membership/page.js",
+  "/admin/membership-packages/page": "app/admin/membership-packages/page.js",
+  "/admin/dashboard/page": "app/admin/dashboard/page.js"
 }

@@ -83,6 +83,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/(marketing)/membership/success/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/membership/success">> = Specific
+  const handler = {} as typeof import("../../app/(marketing)/membership/success/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/(marketing)/our-story/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/our-story">> = Specific
@@ -150,6 +159,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 {
   type __IsExpected<Specific extends AppPageConfig<"/admin/editor">> = Specific
   const handler = {} as typeof import("../../app/admin/editor/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/admin/membership-packages/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/admin/membership-packages">> = Specific
+  const handler = {} as typeof import("../../app/admin/membership-packages/page.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check
@@ -353,6 +371,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/membership/upgrade/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/membership/upgrade">> = Specific
+  const handler = {} as typeof import("../../app/api/membership/upgrade/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/read-aloud/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/read-aloud">> = Specific
@@ -366,6 +393,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/site-settings">> = Specific
   const handler = {} as typeof import("../../app/api/site-settings/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/subscription-plans/[id]/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/subscription-plans/[id]">> = Specific
+  const handler = {} as typeof import("../../app/api/subscription-plans/[id]/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check
@@ -389,10 +425,64 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/urubutopay/callback/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/urubutopay/callback">> = Specific
+  const handler = {} as typeof import("../../app/api/urubutopay/callback/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/urubutopay/initiate/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/urubutopay/initiate">> = Specific
+  const handler = {} as typeof import("../../app/api/urubutopay/initiate/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/urubutopay/transaction/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/urubutopay/transaction">> = Specific
+  const handler = {} as typeof import("../../app/api/urubutopay/transaction/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/users/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/users">> = Specific
   const handler = {} as typeof import("../../app/api/users/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/webhooks/urubutopay/auth/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/webhooks/urubutopay/auth">> = Specific
+  const handler = {} as typeof import("../../app/api/webhooks/urubutopay/auth/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/webhooks/urubutopay/payer-verify/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/webhooks/urubutopay/payer-verify">> = Specific
+  const handler = {} as typeof import("../../app/api/webhooks/urubutopay/payer-verify/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/webhooks/urubutopay/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/webhooks/urubutopay">> = Specific
+  const handler = {} as typeof import("../../app/api/webhooks/urubutopay/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

@@ -5,28 +5,49 @@ const LIST_PAGE_SIZE = 50;
 
 /** Server-only: fetch article list for feeds. No full content. */
 export async function getArticlesList(admin = false): Promise<Article[]> {
-  const articles = await prisma.article.findMany({
-    where: admin ? undefined : { status: "PUBLISHED" },
-    select: {
-      id: true,
-      title: true,
-      slug: true,
-      excerpt: true,
-      authorId: true,
-      publishDate: true,
-      status: true,
-      featuredImage: true,
-      readingTime: true,
-      category: true,
-      claps: true,
-      tags: true,
-      author: {
-        select: { id: true, name: true, avatar: true },
+  let articles: Array<{
+    id: string;
+    title: string;
+    slug: string;
+    excerpt: string;
+    authorId: string;
+    publishDate: Date;
+    status: "DRAFT" | "PUBLISHED" | "SCHEDULED";
+    featuredImage: string;
+    readingTime: number;
+    category: string;
+    claps: number;
+    tags: string[];
+    author: { id: string; name: string; avatar: string | null };
+  }> = [];
+
+  try {
+    articles = await prisma.article.findMany({
+      where: admin ? undefined : { status: "PUBLISHED" },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        excerpt: true,
+        authorId: true,
+        publishDate: true,
+        status: true,
+        featuredImage: true,
+        readingTime: true,
+        category: true,
+        claps: true,
+        tags: true,
+        author: {
+          select: { id: true, name: true, avatar: true },
+        },
       },
-    },
-    orderBy: { publishDate: "desc" },
-    take: LIST_PAGE_SIZE,
-  });
+      orderBy: { publishDate: "desc" },
+      take: LIST_PAGE_SIZE,
+    });
+  } catch (error) {
+    console.error("Failed to load articles list from database.", error);
+    return [];
+  }
 
   return articles.map((a) => ({
     id: a.id,

@@ -28,6 +28,7 @@ model User {
   responses      Response[]
   claps          Clap[]
   passwordResetTokens PasswordResetToken[]
+  urubutoPayTransactions UrubutoPayTransaction[]
 }
 
 model Writer {
@@ -193,6 +194,27 @@ model PasswordResetToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("password_reset_tokens")
+}
+
+model UrubutoPayTransaction {
+  id                      String    @id @default(cuid())
+  transactionId           String    @unique @map("transaction_id")
+  internalTransactionRef  String?   @map("internal_transaction_ref")
+  userId                  String?   @map("user_id")
+  email                   String?   @map("email")
+  tier                    String    @map("tier")
+  planId                  String    @default("plan_per_article") @map("plan_id")
+  amount                  Int       @default(0) @map("amount")
+  currency                String    @default("RWF") @map("currency")
+  channel                 String?   @map("channel")
+  status                  String    @default("INITIATED") @map("status")
+  payerCode               String?   @map("payer_code")
+  payerNames              String?   @map("payer_names")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+  user                    User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("urubutopay_transactions")
 }
 
 enum UserRole {
