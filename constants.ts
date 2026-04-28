@@ -18,8 +18,26 @@ export const GUEST_USER: User = {
   articlesViewedThisMonth: []
 };
 
+/** UrubutoPay payment links (staging). */
+export const URUBUTOPAY_LINKS = {
+  annual: 'https://staging.urubutopay.rw/pwl/annual-package-1773437434609',
+  perArticle: 'https://staging.urubutopay.rw/pwl/subscrption-fee-1773436992502',
+} as const;
+
+export interface SubscriptionPlanConfig {
+  id: string;
+  tier: SubscriptionTier;
+  name: string;
+  price: number;
+  currency: 'RWF';
+  interval: string;
+  paymentUrl: string;
+  features: string[];
+  color: string;
+}
+
 /** Subscription plans in RWF (Rwandan Franc). Benefits per package. */
-export const SUBSCRIPTION_PLANS = [
+export const SUBSCRIPTION_PLANS: SubscriptionPlanConfig[] = [
   {
     id: 'plan_annual',
     tier: SubscriptionTier.UNLIMITED,
@@ -27,6 +45,7 @@ export const SUBSCRIPTION_PLANS = [
     price: 50000,
     currency: 'RWF',
     interval: 'year',
+    paymentUrl: URUBUTOPAY_LINKS.annual,
     features: [
       'Access to 10 articles per year',
       'Ability to comment on content',
@@ -41,6 +60,7 @@ export const SUBSCRIPTION_PLANS = [
     price: 10000,
     currency: 'RWF',
     interval: 'article',
+    paymentUrl: URUBUTOPAY_LINKS.perArticle,
     features: [
       'Ability to comment at the end of the article',
       'Topic-specific 1-hour consultancy session with the author',

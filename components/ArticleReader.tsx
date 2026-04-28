@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Article, Highlight, User, Response, SubscriptionTier } from '../types';
 import type { WriterItem } from '@/lib/articles-server';
-import { PLACEHOLDER_IMAGE } from '../constants';
+import { PLACEHOLDER_IMAGE, SUBSCRIPTION_PLANS } from '../constants';
 import OptimizedImage from './OptimizedImage';
 import GeminiAssistant from './GeminiAssistant';
 import ResponsesDrawer from './ResponsesDrawer';
@@ -10,8 +10,11 @@ import HighlightDrawer from './HighlightDrawer';
 import { RelatedArticleCardCompact } from './RelatedArticleCard';
 
 /** Min and max paragraphs shown for free before the paywall (4–5) */
-const FREE_PREVIEW_PARAGRAPHS_MIN = 4;
-const FREE_PREVIEW_PARAGRAPHS_MAX = 5;
+const FREE_PREVIEW_PARAGRAPHS_MIN = 1;
+const FREE_PREVIEW_PARAGRAPHS_MAX = 2;
+
+const ANNUAL_PLAN = SUBSCRIPTION_PLANS.find((p) => p.id === 'plan_annual');
+const PER_ARTICLE_PLAN = SUBSCRIPTION_PLANS.find((p) => p.id === 'plan_per_article');
 
 /** Stable per-article value in [min, max] so different articles can show 2, 3, or 4 free paragraphs */
 function getFreePreviewParagraphCount(articleId: string): number {
@@ -624,26 +627,78 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
               style={isLimitedAccess ? { marginBottom: 0 } : undefined}
               dangerouslySetInnerHTML={{ __html: highlightedContent }}
             />
-            {/* Pay-to-continue overlay: only for unpaid users (isLimitedAccess), after 4–5 free paragraphs */}
+            {/* Pay-to-continue overlay: only for unpaid users (isLimitedAccess), after 1–2 free paragraphs */}
             {isLimitedAccess && onReadMoreClick && (
-              <div className="relative mt-10 pb-12 min-h-[380px] flex flex-col items-center justify-center">
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/90 to-white pointer-events-none" aria-hidden />
-                <div className="relative z-10 max-w-2xl mx-auto rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
-                  <div className="absolute inset-0 bg-white/95 backdrop-blur-sm pointer-events-none rounded-2xl" aria-hidden />
-                  <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-transparent to-slate-900/10 pointer-events-none rounded-2xl" aria-hidden />
-                  <div className="relative z-10 text-center px-6 sm:px-10 py-8 sm:py-10">
-                    <h2 className="font-charter text-2xl md:text-3xl font-black text-slate-900 tracking-tight mb-4">
-                      Pay to continue reading the full story
+              <div className="relative mt-10 pb-12 min-h-[420px] flex flex-col items-center justify-center">
+                <div
+                  className="absolute inset-0 bg-gradient-to-b from-transparent via-white/90 to-white pointer-events-none"
+                  aria-hidden
+                />
+                <div className="relative z-10 max-w-3xl mx-auto rounded-3xl shadow-2xl border border-slate-100 overflow-hidden">
+                  <div
+                    className="absolute inset-0 bg-white/90 backdrop-blur-sm pointer-events-none rounded-3xl"
+                    aria-hidden
+                  />
+                  <div
+                    className="absolute inset-0 bg-gradient-to-b from-slate-50/60 via-transparent to-slate-900/5 pointer-events-none rounded-3xl"
+                    aria-hidden
+                  />
+                  <div className="relative z-10 px-6 sm:px-10 py-8 sm:py-10">
+                    <h2 className="font-charter text-2xl md:text-3xl font-black text-slate-900 tracking-tight mb-3">
+                      Unlock the rest of this story
                     </h2>
-                    <p className="font-charter text-slate-600 text-base md:text-lg leading-relaxed mb-8">
-                      You&apos;ve read the free preview. To read the rest of this article you need either a paid ThinkUp membership or an annual subscription.
+                    <p className="font-charter text-slate-600 text-base md:text-lg leading-relaxed mb-6">
+                      You&apos;ve reached the end of the free preview. Choose a pass to keep reading insightful,
+                      deeply–reported stories like this one.
                     </p>
-                    <Link
-                      href="/membership"
-                      className="font-charter inline-block px-8 py-3.5 rounded-full bg-slate-900 text-white text-base font-bold hover:bg-slate-800 transition shadow-lg hover:shadow-xl"
-                    >
-                      Pay to read full story
-                    </Link>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                      <div className="rounded-2xl border border-slate-200 bg-white/80 px-5 py-4 text-left">
+                        <p className="font-charter text-xs font-bold uppercase tracking-[0.2em] text-slate-500 mb-1">
+                          Full access
+                        </p>
+                        <p className="font-charter text-base font-black text-slate-900">
+                          {ANNUAL_PLAN
+                            ? new Intl.NumberFormat('en-RW').format(ANNUAL_PLAN.price)
+                            : '50,000'}
+                          <span className="ml-1 text-xs font-bold text-slate-500">RWF / year</span>
+                        </p>
+                        <p className="mt-2 text-sm text-slate-600 font-charter">
+                          Read every article, any time, plus priority access to new series.
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 px-5 py-4 text-left">
+                        <p className="font-charter text-xs font-bold uppercase tracking-[0.2em] text-slate-500 mb-1">
+                          Just this article
+                        </p>
+                        <p className="font-charter text-base font-black text-slate-900">
+                          {PER_ARTICLE_PLAN
+                            ? new Intl.NumberFormat('en-RW').format(PER_ARTICLE_PLAN.price)
+                            : '10,000'}
+                          <span className="ml-1 text-xs font-bold text-slate-500">RWF / article</span>
+                        </p>
+                        <p className="mt-2 text-sm text-slate-600 font-charter">
+                          Unlock this story in full, including future updates and discussion.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                      <Link
+                        href="/membership"
+                        className="font-charter inline-flex items-center justify-center px-7 py-3.5 rounded-full bg-slate-900 text-white text-sm md:text-base font-bold hover:bg-slate-800 transition shadow-lg hover:shadow-xl"
+                      >
+                        View membership options
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={onReadMoreClick}
+                        className="font-charter inline-flex items-center justify-center px-6 py-3 rounded-full border border-slate-300 bg-white text-sm md:text-base font-bold text-slate-700 hover:bg-slate-50 transition"
+                      >
+                        Continue with this article only
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { getPendingRegistration } from "@/components/RegisterView";
 
 export interface PlanForPayment {
   id: string;
@@ -15,34 +16,151 @@ interface PaymentDialogProps {
   isOpen: boolean;
   onClose: () => void;
   plan: PlanForPayment | null;
-  /** Called when payment is completed successfully. Parent should create account and redirect. */
+  /** Called when payment is completed successfully. Parent should create account and/or update tier and redirect. */
   onPaymentSuccess: () => Promise<void>;
+  /** Optional: when provided, use these instead of pending registration data */
+  payerNameOverride?: string;
+  payerEmailOverride?: string;
 }
+
+const PENDING_REF_KEY = "inkwell_pending_payment_reference";
+const PENDING_PLAN_KEY = "inkwell_pending_plan_id";
+
+export function setPendingPaymentRef(ref: string, planId: string) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(PENDING_REF_KEY, ref);
+  sessionStorage.setItem(PENDING_PLAN_KEY, planId);
+}
+
+export function clearPendingPaymentRef() {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem(PENDING_REF_KEY);
+  sessionStorage.removeItem(PENDING_PLAN_KEY);
+}
+
+export function getPendingPaymentRef(): { reference: string; planId: string } | null {
+  if (typeof window === "undefined") return null;
+  const ref = sessionStorage.getItem(PENDING_REF_KEY);
+  const planId = sessionStorage.getItem(PENDING_PLAN_KEY);
+  if (ref && planId) return { reference: ref, planId };
+  return null;
+}
+
+type Channel = "MOMO" | "AIRTEL_MONEY" | "CARD";
 
 export default function PaymentDialog({
   isOpen,
   onClose,
   plan,
   onPaymentSuccess,
+  payerNameOverride,
+  payerEmailOverride,
 }: PaymentDialogProps) {
+  const [channel, setChannel] = useState<Channel>("MOMO");
+  const [phoneNumber, setPhoneNumber] = useState(
+    () => (typeof process !== "undefined" && process.env.NEXT_PUBLIC_URUBUTOPAY_TEST_PHONE) || ""
+  );
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [waitingConfirmation, setWaitingConfirmation] = useState(false);
+  const [transactionId, setTransactionId] = useState<string | null>(null);
 
-  if (!isOpen) return null;
+  const pending = getPendingRegistration();
+  const payerName = payerNameOverride ?? pending?.name ?? "";
+  const payerEmail = payerEmailOverride ?? pending?.email ?? "";
 
-  const handleCompletePayment = async () => {
+  const pollStatus = async (ref: string): Promise<string | null> => {
+    try {
+      const res = await fetch(`/api/urubutopay/transaction?reference=${encodeURIComponent(ref)}`);
+      const data = await res.json().catch(() => ({}));
+      return data.status ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const handlePay = async () => {
     if (!plan) return;
     setError(null);
     setProcessing(true);
+
+    const phone = phoneNumber.trim().replace(/\s/g, "");
+    if (!phone) {
+      setError("Phone number is required");
+      setProcessing(false);
+      return;
+    }
+
     try {
-      await onPaymentSuccess();
-      onClose();
+      const appUrl = typeof window !== "undefined" ? window.location.origin : "";
+      const returnUrl = `${appUrl}/membership/success`;
+
+      const res = await fetch("/api/urubutopay/initiate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planId: plan.id,
+          channelName: channel,
+          phoneNumber: phone,
+          payerName: payerName || "Customer",
+          payerEmail: payerEmail || undefined,
+          returnUrl,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setError(data.error ?? "Payment could not be started. Please try again.");
+        setProcessing(false);
+        return;
+      }
+
+      const ref = data.transactionId;
+      if (!ref) {
+        setError("Invalid response from payment server.");
+        setProcessing(false);
+        return;
+      }
+
+      setPendingPaymentRef(ref, plan.id);
+      setTransactionId(ref);
+
+      if (data.cardProcessingUrl) {
+        window.location.href = data.cardProcessingUrl;
+        return;
+      }
+
+      setWaitingConfirmation(true);
+      setProcessing(false);
+
+      const maxAttempts = 60;
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const status = await pollStatus(ref);
+        if (status === "VALID") {
+          clearPendingPaymentRef();
+          await onPaymentSuccess();
+          onClose();
+          return;
+        }
+        if (status === "FAILED" || status === "CANCELED") {
+          setError("Payment was not completed. Please try again.");
+          setWaitingConfirmation(false);
+          return;
+        }
+      }
+
+      setError("Confirmation is taking longer than expected. Check your phone or try again later.");
+      setWaitingConfirmation(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Payment failed. Please try again.");
-    } finally {
       setProcessing(false);
+      setWaitingConfirmation(false);
     }
   };
+
+  if (!isOpen) return null;
 
   const amountLabel =
     plan?.interval === "year"
@@ -96,6 +214,49 @@ export default function PaymentDialog({
                 </ul>
               </div>
 
+              {!waitingConfirmation ? (
+                <>
+                  <p className="text-sm font-medium text-slate-700 mb-2">Payment method</p>
+                  <div className="flex gap-2 mb-4">
+                    {(["MOMO", "AIRTEL_MONEY", "CARD"] as const).map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setChannel(c)}
+                        className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition ${
+                          channel === c
+                            ? "bg-slate-900 text-white"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        {c === "MOMO" ? "MTN MoMo" : c === "AIRTEL_MONEY" ? "Airtel Money" : "Card"}
+                      </button>
+                    ))}
+                  </div>
+
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Phone number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="0781234567"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent mb-4"
+                  />
+                </>
+              ) : (
+                <div className="mb-6 p-4 bg-amber-50 border border-amber-100 rounded-xl">
+                  <p className="text-sm font-bold text-amber-800">Confirm on your phone</p>
+                  <p className="text-sm text-amber-700 mt-1">
+                    Dial <span className="font-mono font-bold">182*7*1#</span> or use the UrubutoPay app to approve the payment.
+                  </p>
+                  {transactionId && (
+                    <p className="text-xs text-slate-500 mt-2">Ref: {transactionId}</p>
+                  )}
+                </div>
+              )}
+
               <p className="text-xs text-slate-500 mb-4">
                 By completing payment, your account will be created and you will get access according to your chosen package.
               </p>
@@ -115,21 +276,23 @@ export default function PaymentDialog({
                 >
                   Cancel
                 </button>
-                <button
-                  type="button"
-                  onClick={handleCompletePayment}
-                  disabled={processing}
-                  className="flex-1 py-3.5 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-indigo-600 transition disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {processing ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Processing…
-                    </>
-                  ) : (
-                    <>Pay {new Intl.NumberFormat("en-RW").format(plan.price)} RWF</>
-                  )}
-                </button>
+                {!waitingConfirmation && (
+                  <button
+                    type="button"
+                    onClick={handlePay}
+                    disabled={processing}
+                    className="flex-1 py-3.5 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-slate-800 transition disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {processing ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Processing…
+                      </>
+                    ) : (
+                      <>Pay {new Intl.NumberFormat("en-RW").format(plan.price)} RWF</>
+                    )}
+                  </button>
+                )}
               </div>
             </>
           )}
