@@ -49,14 +49,16 @@ export async function handleUrubutoPayPayerVerify(request: Request): Promise<Res
       typeof body.merchant_code === "string" ? body.merchant_code.trim() : "";
     const payer_code =
       typeof body.payer_code === "string" ? body.payer_code.trim() : "";
+    const transaction_id =
+      typeof body.transaction_id === "string" ? body.transaction_id.trim() : "";
 
-    if (!payer_code) {
-      logUrubutuPayEvent("payer_verify", "missing_payer_code", {});
+    if (!payer_code && !transaction_id) {
+      logUrubutuPayEvent("payer_verify", "missing_lookup_refs", {});
       return NextResponse.json(
         {
           timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
           status: 400,
-          message: "payer_code required",
+          message: "payer_code or transaction_id required",
         },
         { status: 400 }
       );
@@ -65,7 +67,10 @@ export async function handleUrubutoPayPayerVerify(request: Request): Promise<Res
     const tx = await prisma.urubutoPayTransaction.findFirst({
       where: {
         status: { in: ["INITIATED", "PENDING"] },
-        OR: [{ payerCode: payer_code }, { transactionId: payer_code }],
+        OR: [
+          ...(payer_code ? [{ payerCode: payer_code }, { transactionId: payer_code }] : []),
+          ...(transaction_id ? [{ transactionId: transaction_id }, { internalTransactionRef: transaction_id }] : []),
+        ],
       },
       orderBy: { createdAt: "desc" },
     });
@@ -73,6 +78,7 @@ export async function handleUrubutoPayPayerVerify(request: Request): Promise<Res
     if (!tx) {
       logUrubutuPayEvent("payer_verify", "no_pending_tx", {
         payerRef: payer_code.slice(0, 40),
+        transactionRef: transaction_id.slice(0, 40),
       });
       return NextResponse.json(
         {
@@ -84,8 +90,19 @@ export async function handleUrubutoPayPayerVerify(request: Request): Promise<Res
       );
     }
 
+    // Persist provider-side payer code when present so later payment callbacks can match by PYR... id.
+    if (payer_code && tx.payerCode !== payer_code) {
+      await prisma.urubutoPayTransaction
+        .update({
+          where: { id: tx.id },
+          data: { payerCode: payer_code, updatedAt: new Date() },
+        })
+        .catch(() => {});
+    }
+
     logUrubutuPayEvent("payer_verify", "bill_returned", {
       payerRef: payer_code.slice(0, 40),
+      transactionRef: transaction_id.slice(0, 40),
       amountRwf: tx.amount,
       planId: tx.planId,
     });

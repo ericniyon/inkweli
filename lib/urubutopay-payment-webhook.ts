@@ -9,7 +9,7 @@ import {
   logUrubutuPayVerbose,
   maskEmail,
 } from "@/lib/urubutopay-debug-log";
-import { urubutuPayUsesLiveGateway } from "@/lib/urubutopay";
+import { getMerchantCode, getTransactionStatus, urubutuPayUsesLiveGateway } from "@/lib/urubutopay";
 
 const SUCCESS_STATUSES = ["VALID", "success", "completed", "paid", "SUCCESS", "COMPLETED", "PAID"];
 
@@ -175,6 +175,61 @@ function extractPayerEmailFromPayload(payload: Payload): string | null {
   return null;
 }
 
+type StatusFallbackResult = {
+  email: string | null;
+  names: string | null;
+  phone: string | null;
+  transactionStatus: string | null;
+};
+
+async function fetchStatusFallback(refs: string[]): Promise<StatusFallbackResult | null> {
+  const merchantCode = getMerchantCode();
+  if (!merchantCode || refs.length === 0) return null;
+
+  for (const ref of refs) {
+    try {
+      const res = await getTransactionStatus({
+        merchant_code: merchantCode,
+        transaction_id: ref,
+      });
+      const payload = (res.data ?? {}) as Record<string, unknown>;
+      const email =
+        typeof payload.payer_email === "string" && payload.payer_email.trim()
+          ? payload.payer_email.trim()
+          : null;
+      const names =
+        typeof payload.payer_names === "string" && payload.payer_names.trim()
+          ? payload.payer_names.trim()
+          : null;
+      const phone =
+        typeof payload.phone_number === "string" && payload.phone_number.trim()
+          ? payload.phone_number.trim()
+          : null;
+      const transactionStatus =
+        typeof payload.transaction_status === "string" && payload.transaction_status.trim()
+          ? payload.transaction_status.trim()
+          : null;
+
+      if (email || names || phone) {
+        logUrubutuPayEvent("webhook", "status_fallback_hit", {
+          queryRef: ref,
+          hasEmail: !!email,
+          hasNames: !!names,
+          hasPhone: !!phone,
+          status: transactionStatus ?? "",
+        });
+        return { email, names, phone, transactionStatus };
+      }
+    } catch {
+      // Ignore provider errors per-ref and continue trying other candidate refs.
+    }
+  }
+  logUrubutuPayEvent("webhook", "status_fallback_miss", {
+    refsTried: refs.length,
+  });
+  return null;
+}
+
 /** Payment notification / reversal callback (reads raw body only for signature). */
 export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: string): Promise<Response> {
   try {
@@ -208,8 +263,8 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
     }
 
     const callbackType = getStr(payload, "callback_type", "callbackType");
-    const transactionStatus = getStr(payload, "transaction_status", "transactionStatus");
-    const email = extractPayerEmailFromPayload(payload);
+    let transactionStatus = getStr(payload, "transaction_status", "transactionStatus");
+    let email = extractPayerEmailFromPayload(payload);
 
     const refBundle = extractWebhookTransactionRefs(payload);
     const ref = refBundle.primaryRef;
@@ -290,6 +345,30 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
       where: prismaTxnMatchOr(refBundle.uniqueValues),
     });
 
+    let phoneOut =
+      getStr(payload, "payer_phone_number", "phone_number", "payer_phone", "payerPhone") ?? "";
+
+    // Some webhook payloads omit identity fields; recover from transaction/status before matching user.
+    if (!email) {
+      const fallback = await fetchStatusFallback(refBundle.uniqueValues);
+      if (fallback?.email) email = fallback.email;
+      if (!phoneOut && fallback?.phone) phoneOut = fallback.phone;
+      if (!transactionStatus && fallback?.transactionStatus) transactionStatus = fallback.transactionStatus;
+
+      if (tx && (fallback?.email || fallback?.names)) {
+        await prisma.urubutoPayTransaction
+          .update({
+            where: { id: tx.id },
+            data: {
+              email: tx.email ?? fallback.email ?? null,
+              payerNames: tx.payerNames ?? fallback.names ?? null,
+              updatedAt: new Date(),
+            },
+          })
+          .catch(() => {});
+      }
+    }
+
     if (tx) {
       await prisma.urubutoPayTransaction.update({
         where: { id: tx.id },
@@ -317,8 +396,6 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
     }
 
     const tier = planIdToTier(tx?.planId);
-    const phoneOut =
-      getStr(payload, "payer_phone_number", "phone_number", "payer_phone", "payerPhone") ?? "";
 
     // Urubutu often omits email in webhook; if we linked the txn to a user at initiate/upgrade,
     // apply tier without requiring email on the payload.
