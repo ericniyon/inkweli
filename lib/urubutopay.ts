@@ -30,12 +30,16 @@ export function getApiKey(): string | undefined {
   const prod = process.env.URUBUTOPAY_API_KEY_PRODUCTION?.trim();
   const staging = process.env.URUBUTOPAY_API_KEY_STAGING?.trim();
   const generic = process.env.URUBUTOPAY_API_KEY?.trim();
-  if (urubutuPayUsesLiveGateway()) return prod || generic;
-  return staging || generic;
+  const legacyUrubutu = process.env.URUBUTO_API_KEY?.trim();
+  if (urubutuPayUsesLiveGateway()) return prod || generic || legacyUrubutu;
+  return staging || generic || legacyUrubutu;
 }
 
 export function getMerchantCode(): string | undefined {
-  return process.env.URUBUTOPAY_MERCHANT_CODE?.trim();
+  return (
+    process.env.URUBUTOPAY_MERCHANT_CODE?.trim() ||
+    process.env.URUBUTO_MERCHANT_CODE?.trim()
+  );
 }
 
 /** PWL product slug (`paymentLinkId` in initiate-link-payment; path segment after `/pwl/`). */

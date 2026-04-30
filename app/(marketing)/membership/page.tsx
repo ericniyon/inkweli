@@ -186,6 +186,7 @@ function MembershipPageInner() {
         payerNameOverride={!isGuest ? user.name : undefined}
         payerEmailOverride={!isGuest ? user.email : undefined}
         authenticatedCheckout={mode === "upgrade"}
+        checkoutUserId={!isGuest && user.id !== "guest" ? user.id : null}
       />
     </div>
   );

@@ -44,7 +44,7 @@ function tierFromDbRow(rawTier: string): SubscriptionTier {
 }
 
 /** Urubutu slug + env keys (`plan_*`) may differ from `SubscriptionPlan.id` (`plan_novis`, …). */
-async function resolveCheckoutPlan(planIdFromClient: string): Promise<
+export async function resolveCheckoutPlan(planIdFromClient: string): Promise<
   | {
       canonicalGatewayPlanId: "plan_annual" | "plan_per_article";
       price: number;
