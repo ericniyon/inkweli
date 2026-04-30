@@ -133,18 +133,26 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
 
   const phoneNorm = normalizeRwPayerPhone(phone);
   const transactionRef = `ink_${Date.now()}_${randomBytes(4).toString("hex")}`;
-  const pwlRedirectBase = getBaseUrl();
-  const redirectionPwl = `${pwlRedirectBase}/pwl/${pwlSlug}?pwlId=${pwlSlug}`;
+  // Use production base URL for wallet payment redirects
+  const productionBaseUrl = "https://urubutopay.rw";
+  const redirectionPwl = `${productionBaseUrl}/pwl/${pwlSlug}?pwlId=${pwlSlug}`;
   const paymentChannel: "WALLET" | "CARD" =
     channelName === "CARD" ? "CARD" : "WALLET";
   const appReturnRedirectionUrl = `${getAppOrigin()}/membership/success?reference=${encodeURIComponent(transactionRef)}`;
   const redirectionOutbound =
     channelName === "CARD" ? appReturnRedirectionUrl : redirectionPwl;
 
+  console.log("[payments/initiate] Debug values:", {
+    merchantCode,
+    configuredServiceId,
+    gatewayServiceCode,
+    canonicalGatewayPlanId
+  });
+
   const bodyPayload: Record<string, unknown> = {
     currency: "RWF",
     merchant_code: merchantCode,
-    paid_amount: amount,
+    paid_mount: amount,
     payer_code: payer_code,
     payer_email: email,
     payer_names: name,
@@ -160,6 +168,11 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
   const trimmed = Object.fromEntries(
     Object.entries(bodyPayload).filter(([, v]) => v !== undefined && v !== "")
   );
+
+  // Ensure service_id is always included for wallet payments
+  if ((channelName === "MOMO" || channelName === "AIRTEL_MONEY") && !trimmed.service_id && configuredServiceId) {
+    trimmed.service_id = configuredServiceId;
+  }
 
   let resJson: Record<string, unknown>;
   try {

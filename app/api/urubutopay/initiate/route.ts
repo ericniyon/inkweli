@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     const payerName = typeof body.payerName === "string" ? body.payerName.trim() : null;
     const returnUrl =
       typeof body.returnUrl === "string" && body.returnUrl.trim() ? body.returnUrl.trim() : undefined;
+    const amount = typeof body.amount === "number" ? body.amount : undefined;
 
     const session = await getServerSession(authOptions);
     const sessionUserId = session?.userId;
@@ -97,6 +98,7 @@ export async function POST(request: Request) {
         returnUrl,
         userId: user.id,
         preassignedTransactionId: paymentReference,
+        amount,
       });
 
       if (!result.ok) {
@@ -154,6 +156,7 @@ export async function POST(request: Request) {
       payerEmail,
       returnUrl,
       userId,
+      amount,
     });
 
     if (!result.ok) {

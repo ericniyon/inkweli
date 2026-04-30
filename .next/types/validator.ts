@@ -416,10 +416,28 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/payments/events/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/payments/events">> = Specific
+  const handler = {} as typeof import("../../app/api/payments/events/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/payments/initiate/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/payments/initiate">> = Specific
   const handler = {} as typeof import("../../app/api/payments/initiate/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/payments/status/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/payments/status">> = Specific
+  const handler = {} as typeof import("../../app/api/payments/status/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check
