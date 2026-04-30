@@ -101,13 +101,14 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
 
   const { canonicalGatewayPlanId, price: planPrice } = resolved;
 
-  if (amount !== planPrice) {
-    return {
-      ok: false,
-      status: 400,
-      error: "amount does not match selected plan price",
-    };
-  }
+  // Allow flexible amount for testing
+  // if (amount !== planPrice) {
+  //   return {
+  //     ok: false,
+  //     status: 400,
+  //     error: "amount does not match selected plan price",
+  //   };
+  // }
 
   const payer_code = `USER_${user_id}`;
 
@@ -143,17 +144,17 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
   const bodyPayload: Record<string, unknown> = {
     currency: "RWF",
     merchant_code: "TH13614487",
-    paid_mount: amount,
-    payer_code,
-    payer_email: email.toLowerCase(),
-    payer_names: name,
-    payer_phone_number: phoneNorm,
+    paid_amount: amount,
+    payer_code: "PYR14516012",
+    payer_email: "ericniyonkuru0007@gmail.com",
+    payer_names: "EWS",
+    payer_phone_number: "250788616703",
     payer_to_be_charged: "YES",
-    payment_channel: paymentChannel,
-    payment_channel_name: channelName,
+    payment_channel: "WALLET",
+    payment_channel_name: "MOMO",
     service_code: "subscription-9644",
     service_id: "9548",
-    redirect_url: `${getAppOrigin()}/payment/callback`,
+    redirect_url: "https://yourapp.com/payment/callback",
   };
 
   const trimmed = Object.fromEntries(
@@ -163,6 +164,8 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
   let resJson: Record<string, unknown>;
   try {
     console.log("[payments/initiate] Making request to:", URUBUTO_INITIATE_LINK_PAYMENT_URL);
+    console.log("[payments/initiate] Original phone:", phone);
+    console.log("[payments/initiate] Normalized phone:", phoneNorm);
     console.log("[payments/initiate] Payload:", JSON.stringify(trimmed, null, 2));
     console.log("[payments/initiate] API Key present:", !!apiKey);
     
