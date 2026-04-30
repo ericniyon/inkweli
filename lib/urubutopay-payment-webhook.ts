@@ -3,6 +3,13 @@ import { prisma } from "@/lib/prisma";
 import type { SubscriptionTier } from "@prisma/client";
 import * as jose from "jose";
 import crypto from "crypto";
+import { requestAuthorizationMatchesUrubutoApiKey } from "@/lib/urubutopay-request-api-key-match";
+import {
+  logUrubutuPayEvent,
+  logUrubutuPayVerbose,
+  maskEmail,
+} from "@/lib/urubutopay-debug-log";
+import { urubutuPayUsesLiveGateway } from "@/lib/urubutopay";
 
 const SUCCESS_STATUSES = ["VALID", "success", "completed", "paid", "SUCCESS", "COMPLETED", "PAID"];
 
@@ -26,18 +33,6 @@ async function verifyBearerToken(request: Request): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/** Fallback when portal has no Auth URL: accept if they send the same API key we use for API calls */
-function verifyApiKey(request: Request): boolean {
-  const auth = request.headers.get("authorization");
-  if (!auth) return false;
-  const apiKey =
-    process.env.NODE_ENV === "production"
-      ? process.env.URUBUTOPAY_API_KEY_PRODUCTION
-      : process.env.URUBUTOPAY_API_KEY_STAGING;
-  if (!apiKey) return false;
-  return auth === apiKey || auth === `Bearer ${apiKey}`;
 }
 
 function verifySignature(rawBody: string, signatureHeader: string | null, secret: string | undefined): boolean {
@@ -67,24 +62,30 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
   try {
     const signatureHeader =
       request.headers.get("x-urubutopay-signature") ?? request.headers.get("X-UrubutoPay-Signature") ?? null;
-    const webhookSecret =
-      process.env.NODE_ENV === "production"
-        ? process.env.URUBUTOPAY_WEBHOOK_SECRET_PRODUCTION
-        : process.env.URUBUTOPAY_WEBHOOK_SECRET_STAGING;
+    const webhookSecret = urubutuPayUsesLiveGateway()
+      ? process.env.URUBUTOPAY_WEBHOOK_SECRET_PRODUCTION
+      : process.env.URUBUTOPAY_WEBHOOK_SECRET_STAGING;
 
     const validBearer = await verifyBearerToken(request);
     const validSig = verifySignature(rawBody, signatureHeader, webhookSecret ?? undefined);
-    const validApiKey = verifyApiKey(request);
+    const validApiKey = requestAuthorizationMatchesUrubutoApiKey(request);
 
     if (!validBearer && !(webhookSecret && validSig) && !validApiKey) {
       console.warn("[webhooks/urubutopay] Invalid or missing auth (Bearer, signature, or API key)");
+      logUrubutuPayEvent("webhook", "auth_failed", {
+        hasAuthHeader: !!request.headers.get("authorization")?.trim(),
+        hasSignature: !!signatureHeader,
+      });
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    logUrubutuPayVerbose("webhook", "raw_body", rawBody.slice(0, 8192));
 
     let payload: Payload;
     try {
       payload = JSON.parse(rawBody) as Payload;
     } catch {
+      logUrubutuPayEvent("webhook", "invalid_json", { length: rawBody.length });
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
 
@@ -104,8 +105,15 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
 
     const ref = transactionId || internalTransactionId || payerCode;
     if (!ref) {
+      logUrubutuPayEvent("webhook", "missing_reference", {});
       return NextResponse.json({ error: "Missing transaction reference" }, { status: 400 });
     }
+
+    logUrubutuPayEvent("webhook", "callback_received", {
+      ref,
+      transactionStatus: transactionStatus ?? "",
+      callbackType: callbackType ?? "",
+    });
 
     // Reversal / canceled
     if (
@@ -139,7 +147,15 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
             where: { id: tx.userId },
             data: { tier: "NONE" },
           }).catch(() => {});
+          logUrubutuPayEvent("webhook", "reversal_downgraded_user", { ref, userId: tx.userId });
+        } else {
+          logUrubutuPayEvent("webhook", "reversal_transaction_only", {
+            ref,
+            rowsUpdated: updated.count,
+          });
         }
+      } else {
+        logUrubutuPayEvent("webhook", "reversal_no_matching_tx", { ref });
       }
       return NextResponse.json({
         timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
@@ -154,6 +170,7 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
       callbackType === "BULK_DISBURSEMENT_PAYMENT" ||
       callbackType === "RECURRING"
     ) {
+      logUrubutuPayEvent("webhook", "ack_bulk_or_recurring", { callbackType: callbackType ?? "" });
       return NextResponse.json({
         timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
         status: 200,
@@ -181,6 +198,11 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
 
     const isSuccess = transactionStatus !== null && SUCCESS_STATUSES.includes(transactionStatus);
     if (!isSuccess) {
+      logUrubutuPayEvent("webhook", "notification_not_final_success", {
+        ref,
+        transactionStatus: transactionStatus ?? "null",
+        dbTxFound: !!tx,
+      });
       return NextResponse.json({
         timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
         status: 200,
@@ -197,6 +219,7 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
     const userEmail = email ?? tx?.email ?? null;
     if (!userEmail) {
       console.warn("[webhooks/urubutopay] Success but no email", { ref, payload: Object.keys(payload) });
+      logUrubutuPayEvent("webhook", "paid_no_email_skip_tier", { ref });
       return NextResponse.json({
         timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
         status: 200,
@@ -220,6 +243,19 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
           data: { userId: user.id, updatedAt: new Date() },
         }).catch(() => {});
       }
+
+      logUrubutuPayEvent("webhook", "payment_success_tier_applied", {
+        ref,
+        tier,
+        email: maskEmail(userEmail),
+        linkedNewTxn: !!(tx && !tx.userId),
+      });
+    } else {
+      logUrubutuPayEvent("webhook", "payment_success_unknown_user", {
+        ref,
+        tier,
+        email: maskEmail(userEmail),
+      });
     }
 
     return NextResponse.json({

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getApiKey, getMerchantCode, getTransactionStatus } from "@/lib/urubutopay";
+import { logUrubutuPayEvent } from "@/lib/urubutopay-debug-log";
 
 /**
  * Verify transaction status with UrubutoPay.
@@ -39,6 +40,11 @@ export async function POST(request: Request) {
     });
 
     if (result.status !== 200) {
+      logUrubutuPayEvent("transaction_status", "lookup_failed", {
+        transactionRef: transactionId.slice(0, 48),
+        httpStatus: result.status,
+        message: ((result as { message?: string }).message ?? "").slice(0, 200),
+      });
       return NextResponse.json(
         { error: (result as { message?: string }).message ?? "Transaction not found", status: result.status },
         { status: result.status === 404 ? 404 : 502 }
@@ -57,6 +63,11 @@ export async function POST(request: Request) {
         .catch(() => {});
     }
 
+    logUrubutuPayEvent("transaction_status", "lookup_ok", {
+      transactionRef: transactionId.slice(0, 48),
+      status: data?.transaction_status ?? "",
+      amount: data?.amount ?? "",
+    });
     return NextResponse.json({
       transactionId: data?.transaction_id ?? transactionId,
       internalTransactionId: data?.internal_transaction_id,

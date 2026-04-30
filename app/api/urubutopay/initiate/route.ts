@@ -10,6 +10,8 @@ import {
   type PaymentChannel,
 } from "@/lib/urubutopay";
 import { randomBytes } from "crypto";
+import { logUrubutuPayEvent } from "@/lib/urubutopay-debug-log";
+import { getAppOrigin } from "@/lib/app-origin";
 
 function planIdToTier(planId: string): SubscriptionTier {
   if (planId === "plan_annual") return "UNLIMITED";
@@ -70,7 +72,7 @@ export async function POST(request: Request) {
     }
 
     const transactionId = `ink_${Date.now()}_${randomBytes(4).toString("hex")}`;
-    const appUrl = process.env.APP_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
+    const appUrl = getAppOrigin();
     const defaultReturnUrl = `${appUrl}/membership/success?reference=${encodeURIComponent(transactionId)}`;
     const redirectionUrl = returnUrl || defaultReturnUrl;
 
@@ -111,6 +113,14 @@ export async function POST(request: Request) {
 
     const result = await initiatePayment(params);
 
+    logUrubutuPayEvent("initiate", "provider_response", {
+      transactionId,
+      planId,
+      channelName,
+      httpStatus: result.status,
+      message: typeof result.message === "string" ? result.message.slice(0, 200) : "",
+    });
+
     if (result.data?.internal_transaction_ref_number) {
       await prisma.urubutoPayTransaction.update({
         where: { id: tx.id },
@@ -120,6 +130,10 @@ export async function POST(request: Request) {
 
     if (result.status !== 200 && result.status !== 201) {
       const msg = (result as { message?: string }).message ?? "Payment initiation failed";
+      logUrubutuPayEvent("initiate", "initiate_failed", {
+        transactionId,
+        detail: msg.slice(0, 200),
+      });
       return NextResponse.json(
         { error: msg, details: result },
         { status: result.status >= 400 && result.status < 500 ? result.status : 502 }
@@ -127,6 +141,12 @@ export async function POST(request: Request) {
     }
 
     const data = (result.data ?? {}) as Record<string, unknown>;
+    logUrubutuPayEvent("initiate", "initiate_ok", {
+      transactionId,
+      internalRef: ((data.internal_transaction_ref_number as string) ?? "").slice(0, 40),
+      transactionStatus:
+        typeof data.transaction_status === "string" ? data.transaction_status : "INITIATED",
+    });
     return NextResponse.json({
       transactionId,
       internalTransactionRef: data.internal_transaction_ref_number ?? null,

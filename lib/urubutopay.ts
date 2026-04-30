@@ -6,16 +6,30 @@
 const STAGING_BASE = "https://staging.urubutopay.rw";
 const PRODUCTION_BASE = "https://urubutopay.rw";
 
+/**
+ * Prefer env base URL when set so production deploy can point at staging (or vice versa)
+ * without NODE_ENV hacks. Aligns initiate + webhook API-key matching + HMAC secrets.
+ */
+export function urubutuPayUsesLiveGateway(): boolean {
+  const configured = process.env.URUBUTOPAY_BASE_URL?.trim().toLowerCase() ?? "";
+  if (configured.includes("staging.")) return false;
+  if (configured.includes("urubutopay.rw") && !configured.includes("staging"))
+    return true;
+  return process.env.NODE_ENV === "production";
+}
+
 export function getBaseUrl(): string {
   const url = process.env.URUBUTOPAY_BASE_URL?.trim();
   if (url) return url.replace(/\/$/, "");
-  return process.env.NODE_ENV === "production" ? PRODUCTION_BASE : STAGING_BASE;
+  return urubutuPayUsesLiveGateway() ? PRODUCTION_BASE : STAGING_BASE;
 }
 
 export function getApiKey(): string | undefined {
-  return process.env.NODE_ENV === "production"
-    ? process.env.URUBUTOPAY_API_KEY_PRODUCTION
-    : process.env.URUBUTOPAY_API_KEY_STAGING;
+  const prod = process.env.URUBUTOPAY_API_KEY_PRODUCTION?.trim();
+  const staging = process.env.URUBUTOPAY_API_KEY_STAGING?.trim();
+  const generic = process.env.URUBUTOPAY_API_KEY?.trim();
+  if (urubutuPayUsesLiveGateway()) return prod || generic;
+  return staging || generic;
 }
 
 export function getMerchantCode(): string | undefined {

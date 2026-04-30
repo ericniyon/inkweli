@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { logUrubutuPayEvent } from "@/lib/urubutopay-debug-log";
+import { getAppOrigin } from "@/lib/app-origin";
 
 /**
  * UrubutoPay callback URL.
@@ -16,7 +18,7 @@ import { NextResponse } from "next/server";
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const appUrl = process.env.APP_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const appUrl = getAppOrigin();
   const successBase = `${appUrl}/membership/success`;
 
   const reference =
@@ -34,6 +36,11 @@ export async function GET(request: Request) {
 
   const query = params.toString();
   const redirectUrl = query ? `${successBase}?${query}` : successBase;
+
+  logUrubutuPayEvent("callback", "browser_redirect", {
+    reference: (reference ?? "").slice(0, 48),
+    status: status ?? "",
+  });
 
   return NextResponse.redirect(redirectUrl, 302);
 }
