@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST='{"app/admin/editor/page.tsx -> @/components/SummernoteEditor":{"id":4524,"files":["static/css/bcd3ca5273627146.css","static/chunks/4524.a7dbe192c3c270fb.js"]},"components/SummernoteEditor.tsx -> react-quill-new":{"id":6383,"files":["static/chunks/8764.53c3d32866c1784e.js"]}}';
+self.__REACT_LOADABLE_MANIFEST="{}"

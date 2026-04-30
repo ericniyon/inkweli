@@ -57,6 +57,102 @@ function getStr(p: Payload, ...keys: string[]): string | null {
   return null;
 }
 
+/** UrubutoPay may send ids as strings or numbers; normalize for lookups. */
+function getRefStr(p: Payload, ...keys: string[]): string | null {
+  for (const k of keys) {
+    const v = p[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  return null;
+}
+
+type WebhookTxRefCandidates = {
+  transaction_id: string | null;
+  internal_transaction_id: string | null;
+  payer_code: string | null;
+  slip_number: string | null;
+  external_transaction_id: string | null;
+};
+
+function collectRefFields(p: Payload): WebhookTxRefCandidates {
+  return {
+    transaction_id: getRefStr(p, "transaction_id", "transactionId"),
+    internal_transaction_id: getRefStr(p, "internal_transaction_id", "internalTransactionId"),
+    payer_code: getRefStr(p, "payer_code", "payerCode"),
+    slip_number: getRefStr(p, "slip_number", "slipNumber"),
+    external_transaction_id: getRefStr(p, "external_transaction_id", "externalTransactionId"),
+  };
+}
+
+function mergeRefCandidates(a: WebhookTxRefCandidates, b: WebhookTxRefCandidates): WebhookTxRefCandidates {
+  return {
+    transaction_id: a.transaction_id ?? b.transaction_id,
+    internal_transaction_id: a.internal_transaction_id ?? b.internal_transaction_id,
+    payer_code: a.payer_code ?? b.payer_code,
+    slip_number: a.slip_number ?? b.slip_number,
+    external_transaction_id: a.external_transaction_id ?? b.external_transaction_id,
+  };
+}
+
+/**
+ * Collect every transaction reference UrubutoPay might send so we match DB rows regardless of
+ * which field carries the merchant ref vs gateway id.
+ */
+export function extractWebhookTransactionRefs(payload: Payload): {
+  byField: WebhookTxRefCandidates;
+  uniqueValues: string[];
+  primaryRef: string;
+} {
+  const top = collectRefFields(payload);
+  let byField = top;
+  const data = payload.data;
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    byField = mergeRefCandidates(top, collectRefFields(data as Payload));
+  }
+
+  const order: (keyof WebhookTxRefCandidates)[] = [
+    "transaction_id",
+    "internal_transaction_id",
+    "payer_code",
+    "slip_number",
+    "external_transaction_id",
+  ];
+  const uniqueValues: string[] = [];
+  const seen = new Set<string>();
+  for (const key of order) {
+    const v = byField[key];
+    if (v && !seen.has(v)) {
+      seen.add(v);
+      uniqueValues.push(v);
+    }
+  }
+
+  const ink = uniqueValues.find((r) => r.startsWith("ink_"));
+  const primaryRef =
+    ink ??
+    byField.transaction_id ??
+    byField.internal_transaction_id ??
+    byField.payer_code ??
+    byField.slip_number ??
+    byField.external_transaction_id ??
+    "";
+
+  return { byField, uniqueValues, primaryRef };
+}
+
+function prismaTxnMatchOr(refs: string[]) {
+  const OR: Array<{
+    transactionId?: string;
+    internalTransactionRef?: string;
+    payerCode?: string;
+  }> = [];
+  for (const ref of refs) {
+    OR.push({ transactionId: ref }, { internalTransactionRef: ref }, { payerCode: ref });
+  }
+  return { OR };
+}
+
 /** Payload often lacks top-level payer_email — check aliases and nested `data`. */
 function extractPayerEmailFromPayload(payload: Payload): string | null {
   const top = getStr(
@@ -113,19 +209,27 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
 
     const callbackType = getStr(payload, "callback_type", "callbackType");
     const transactionStatus = getStr(payload, "transaction_status", "transactionStatus");
-    const transactionId = getStr(payload, "transaction_id", "transactionId");
-    const internalTransactionId = getStr(payload, "internal_transaction_id", "internalTransactionId");
-    const payerCode = getStr(payload, "payer_code", "payerCode");
     const email = extractPayerEmailFromPayload(payload);
 
-    const ref = transactionId || internalTransactionId || payerCode;
-    if (!ref) {
+    const refBundle = extractWebhookTransactionRefs(payload);
+    const ref = refBundle.primaryRef;
+
+    console.info("[webhooks/urubutopay] txn_ref_candidates", {
+      byField: refBundle.byField,
+      uniqueRefs: refBundle.uniqueValues,
+      primaryRef: refBundle.primaryRef,
+    });
+
+    if (refBundle.uniqueValues.length === 0 || !ref) {
       logUrubutuPayEvent("webhook", "missing_reference", {});
       return NextResponse.json({ error: "Missing transaction reference" }, { status: 400 });
     }
 
+    const internalTransactionId = refBundle.byField.internal_transaction_id;
+
     logUrubutuPayEvent("webhook", "callback_received", {
       ref,
+      uniqueRefs: refBundle.uniqueValues.join("|"),
       transactionStatus: transactionStatus ?? "",
       callbackType: callbackType ?? "",
     });
@@ -138,24 +242,12 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
       String(transactionStatus).toUpperCase() === "CANCELED"
     ) {
       const updated = await prisma.urubutoPayTransaction.updateMany({
-        where: {
-          OR: [
-            { transactionId: ref },
-            { internalTransactionRef: ref },
-            { payerCode: ref },
-          ],
-        },
+        where: prismaTxnMatchOr(refBundle.uniqueValues),
         data: { status: "CANCELED", updatedAt: new Date() },
       });
       if (updated.count > 0) {
         const tx = await prisma.urubutoPayTransaction.findFirst({
-          where: {
-            OR: [
-              { transactionId: ref },
-              { internalTransactionRef: ref },
-              { payerCode: ref },
-            ],
-          },
+          where: prismaTxnMatchOr(refBundle.uniqueValues),
         });
         if (tx?.userId) {
           await prisma.user.update({
@@ -195,13 +287,7 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
 
     // Payment callback or notification
     const tx = await prisma.urubutoPayTransaction.findFirst({
-      where: {
-        OR: [
-          { transactionId: ref },
-          { internalTransactionRef: ref },
-          { payerCode: ref },
-        ],
-      },
+      where: prismaTxnMatchOr(refBundle.uniqueValues),
     });
 
     if (tx) {
@@ -277,7 +363,10 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
         ref,
         payloadKeys: Object.keys(payload),
       });
-      logUrubutuPayEvent("webhook", "paid_no_email_skip_tier", { ref });
+      logUrubutuPayEvent("webhook", "paid_no_email_skip_tier", {
+        ref,
+        uniqueRefs: refBundle.uniqueValues.join("|"),
+      });
       return NextResponse.json({
         timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
         status: 200,
