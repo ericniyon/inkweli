@@ -73,6 +73,29 @@ async function startPaymentViaLinkFallback(args: {
   });
 }
 
+async function startPaymentViaCanonicalFallback(args: {
+  planId: string;
+  channelName: Channel;
+  phoneNumber: string;
+  payerName: string;
+  payerEmail?: string;
+  returnUrl: string;
+}) {
+  return fetch("/api/urubutopay/initiate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      planId: args.planId,
+      channelName: args.channelName,
+      phoneNumber: args.phoneNumber,
+      payerName: args.payerName,
+      payerEmail: args.payerEmail || undefined,
+      returnUrl: args.returnUrl,
+    }),
+  });
+}
+
 export default function PaymentDialog({
   isOpen,
   onClose,
@@ -157,8 +180,19 @@ export default function PaymentDialog({
       }
       );
 
-      // Backward compatibility: if the new subscriptions endpoint is unavailable,
-      // fall back to payment-link initiation using selected package + authenticated payer details.
+      // Backward compatibility: if the subscriptions endpoint is unavailable,
+      // try canonical UrubutoPay initiate and finally link-initiation alias.
+      if (authenticatedCheckout && res.status === 404) {
+        res = await startPaymentViaCanonicalFallback({
+          planId: plan.id,
+          channelName: channel,
+          phoneNumber: phone,
+          payerName: payerName || "Customer",
+          payerEmail: payerEmail || undefined,
+          returnUrl,
+        });
+      }
+
       if (authenticatedCheckout && res.status === 404) {
         res = await startPaymentViaLinkFallback({
           planId: plan.id,
@@ -200,7 +234,7 @@ export default function PaymentDialog({
       setTransactionId(ref);
 
       const cardHref = data.checkout_url ?? data.cardProcessingUrl;
-      if (typeof cardHref === "string" && cardHref.trim()) {
+      if (channel === "CARD" && typeof cardHref === "string" && cardHref.trim()) {
         window.location.href = cardHref;
         return;
       }

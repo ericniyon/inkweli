@@ -70,7 +70,6 @@ export async function createUrubutuTransactionAndInitiate(args: {
   const redirectionUrl = args.returnUrl || defaultReturnUrl;
   const paymentChannel: "WALLET" | "CARD" =
     args.channelName === "CARD" ? "CARD" : "WALLET";
-  const paymentLinkUrl = `https://urubutopay.rw/pwl/${encodeURIComponent(serviceCode)}?pwlId=${encodeURIComponent(serviceCode)}`;
   const configuredPaymentLinkId =
     args.planId === "plan_annual"
       ? process.env.URUBUTOPAY_PAYMENT_LINK_ID_ANNUAL?.trim()
@@ -99,7 +98,7 @@ export async function createUrubutuTransactionAndInitiate(args: {
     service_id: configuredServiceId || undefined,
     transaction_id: transactionId,
     service_code: serviceCode,
-    redirection_url: args.channelName === "CARD" ? redirectionUrl : paymentLinkUrl,
+    ...(args.channelName === "CARD" && { redirection_url: redirectionUrl }),
   };
 
   const tx = await prisma.urubutoPayTransaction.create({
