@@ -18,10 +18,10 @@ export const GUEST_USER: User = {
   articlesViewedThisMonth: []
 };
 
-/** UrubutoPay payment links (staging). */
+/** UrubutoPay payment links (production PWL fallbacks when env/build has no NEXT_PUBLIC_*). */
 export const URUBUTOPAY_LINKS = {
-  annual: 'https://staging.urubutopay.rw/pwl/annual-package-1773437434609',
-  perArticle: 'https://staging.urubutopay.rw/pwl/subscrption-fee-1773436992502',
+  annual: 'https://urubutopay.rw/pwl/annual-package-1777494294743',
+  perArticle: 'https://urubutopay.rw/pwl/per-article-package-1777494222439',
 } as const;
 
 export interface SubscriptionPlanConfig {
