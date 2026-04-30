@@ -1,9 +1,4 @@
 {
-  "/api/site-settings/route": "app/api/site-settings/route.js",
   "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
-  "/api/subscription-plans/route": "app/api/subscription-plans/route.js",
-  "/api/auth/me/route": "app/api/auth/me/route.js",
-  "/api/subscriptions/initiate/route": "app/api/subscriptions/initiate/route.js",
-  "/api/payment/initiate-link-payment/route": "app/api/payment/initiate-link-payment/route.js",
   "/(marketing)/membership/page": "app/(marketing)/membership/page.js"
 }
