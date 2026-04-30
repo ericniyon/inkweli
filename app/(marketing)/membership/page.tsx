@@ -1,23 +1,21 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, useCallback, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { SUBSCRIPTION_PLANS, type SubscriptionPlanConfig } from "@/constants";
+import { SUBSCRIPTION_PLANS, PENDING_PLAN_STORAGE_KEY, type SubscriptionPlanConfig } from "@/constants";
 import MembershipView from "@/components/MembershipView";
 import PaymentDialog, { type PlanForPayment } from "@/components/PaymentDialog";
-import {
-  getPendingRegistration,
-  clearPendingRegistration,
-} from "@/components/RegisterView";
 
-export default function MembershipPage() {
+function MembershipPageInner() {
   const router = useRouter();
-  const { user, setUser, isGuest } = useAuth();
+  const searchParams = useSearchParams();
+  const { user, setUser, isGuest, hydrated } = useAuth();
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<PlanForPayment | null>(null);
   const [mode, setMode] = useState<"register" | "upgrade" | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlanConfig[]>(SUBSCRIPTION_PLANS);
+  const autoOpenedRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,96 +71,105 @@ export default function MembershipPage() {
     };
   }, []);
 
-  const completeRegistrationAfterPayment = useCallback(async () => {
-    const pending = getPendingRegistration();
-    if (!pending || !selectedPlan) throw new Error("Missing registration or plan.");
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: pending.name,
-        email: pending.email,
-        password: pending.password,
-        planId: selectedPlan.id,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "Registration failed.");
-    clearPendingRegistration();
-    setUser(data);
-    router.push("/dashboard");
-  }, [selectedPlan, setUser, router]);
+  const refreshUserFromSession = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me", { credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.id && data?.email && data?.name) {
+        setUser(data);
+      }
+    } catch {
+      // ignore
+    }
+  }, [setUser]);
 
   const upgradeAfterPayment = useCallback(async () => {
-    if (!selectedPlan) throw new Error("Missing plan.");
-    const res = await fetch("/api/membership/upgrade", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ planId: selectedPlan.id }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "Upgrade failed.");
-    setUser(data);
+    await refreshUserFromSession();
     router.push("/dashboard");
-  }, [selectedPlan, setUser, router]);
+  }, [refreshUserFromSession, router]);
 
-  const handleGetStarted = (planId?: string) => {
-    const pending = getPendingRegistration();
-    if (pending && planId) {
-      const plan = plans.find((p) => p.id === planId);
-      if (plan) {
-        setSelectedPlan({
-          id: plan.id,
-          name: plan.name,
-          price: plan.price,
-          currency: plan.currency,
-          interval: plan.interval,
-          features: plan.features,
-        });
-        setMode("register");
-        setPaymentDialogOpen(true);
+  const completeRegistrationAfterPayment = useCallback(async () => {
+    await refreshUserFromSession();
+    router.push("/dashboard");
+  }, [refreshUserFromSession, router]);
+
+  const handleGetStarted = useCallback(
+    (planId?: string) => {
+      if (!planId) {
+        router.push(isGuest ? "/login" : "/dashboard");
+        return;
       }
-      return;
-    }
 
-    if (!planId) {
-      if (isGuest) router.push("/register");
-      else router.push("/dashboard");
-      return;
-    }
+      const planCfg = plans.find((p) => p.id === planId);
+      if (!planCfg) return;
 
-    // Logged-in user upgrading or renewing
-    if (!isGuest) {
-      const plan = plans.find((p) => p.id === planId);
-      if (plan) {
-        setSelectedPlan({
-          id: plan.id,
-          name: plan.name,
-          price: plan.price,
-          currency: plan.currency,
-          interval: plan.interval,
-          features: plan.features,
-        });
-        setMode("upgrade");
-        setPaymentDialogOpen(true);
+      if (isGuest) {
+        try {
+          localStorage.setItem(PENDING_PLAN_STORAGE_KEY, planId);
+        } catch {
+          // ignore
+        }
+        const dest = `/membership?plan=${encodeURIComponent(planId)}`;
+        router.push(`/login?callbackUrl=${encodeURIComponent(dest)}`);
+        return;
       }
-      return;
-    }
 
-    // Not logged in and no pending registration: send to register flow
-    router.push("/register");
-  };
+      const asPlan: PlanForPayment = {
+        id: planCfg.id,
+        name: planCfg.name,
+        price: planCfg.price,
+        currency: planCfg.currency,
+        interval: planCfg.interval,
+        features: planCfg.features,
+      };
+      setSelectedPlan(asPlan);
+      setMode("upgrade");
+      setPaymentDialogOpen(true);
+    },
+    [isGuest, plans, router]
+  );
 
-  const [hasPendingRegistration, setHasPendingRegistration] = useState(false);
   useEffect(() => {
-    setHasPendingRegistration(!!getPendingRegistration());
-  }, []);
+    if (!hydrated || isGuest || plans.length === 0) return;
+    const pid = searchParams.get("plan")?.trim();
+    if (!pid) return;
+
+    try {
+      localStorage.removeItem(PENDING_PLAN_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+
+    const planCfg = plans.find((p) => p.id === pid);
+    if (!planCfg) {
+      router.replace("/membership", { scroll: false });
+      autoOpenedRef.current = null;
+      return;
+    }
+
+    if (autoOpenedRef.current === pid) return;
+    autoOpenedRef.current = pid;
+
+    const asPlan: PlanForPayment = {
+      id: planCfg.id,
+      name: planCfg.name,
+      price: planCfg.price,
+      currency: planCfg.currency,
+      interval: planCfg.interval,
+      features: planCfg.features,
+    };
+    setSelectedPlan(asPlan);
+    setMode("upgrade");
+    setPaymentDialogOpen(true);
+  }, [hydrated, isGuest, plans, router, searchParams]);
+
+  const onPaymentSuccess = mode === "upgrade" ? upgradeAfterPayment : completeRegistrationAfterPayment;
 
   return (
     <div className="min-h-[calc(100vh-140px)] animate-fade-up">
       <MembershipView
         onGetStarted={handleGetStarted}
-        hasPendingRegistration={hasPendingRegistration}
+        hasPendingRegistration={false}
         currentTier={user.tier}
         isLoggedIn={!isGuest}
         plans={plans}
@@ -175,10 +182,25 @@ export default function MembershipPage() {
           setMode(null);
         }}
         plan={selectedPlan}
-        onPaymentSuccess={mode === "upgrade" ? upgradeAfterPayment : completeRegistrationAfterPayment}
+        onPaymentSuccess={onPaymentSuccess}
         payerNameOverride={!isGuest ? user.name : undefined}
         payerEmailOverride={!isGuest ? user.email : undefined}
+        authenticatedCheckout={mode === "upgrade"}
       />
     </div>
+  );
+}
+
+export default function MembershipPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[calc(100vh-140px)] flex items-center justify-center px-6">
+          <div className="text-slate-500 font-charter text-sm">Loading…</div>
+        </div>
+      }
+    >
+      <MembershipPageInner />
+    </Suspense>
   );
 }

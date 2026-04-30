@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import LoginView from "@/components/LoginView";
+import { PENDING_PLAN_STORAGE_KEY } from "@/constants";
 
 const ERROR_MESSAGE = "Sign-in failed. Please try again.";
 
@@ -40,8 +41,24 @@ function LoginPageContent() {
         initialError={initialError}
         onLogin={(user) => {
           setUser(user);
-          const redirectPath = user.role === "ADMIN" ? "/admin" : defaultPath;
-          router.push(redirectPath);
+          if (user.role === "ADMIN") {
+            router.push("/admin");
+            return;
+          }
+          try {
+            const pendingPlan =
+              typeof window !== "undefined"
+                ? localStorage.getItem(PENDING_PLAN_STORAGE_KEY)?.trim()
+                : "";
+            if (pendingPlan) {
+              localStorage.removeItem(PENDING_PLAN_STORAGE_KEY);
+              router.push(`/membership?plan=${encodeURIComponent(pendingPlan)}`);
+              return;
+            }
+          } catch {
+            // ignore
+          }
+          router.push(defaultPath);
         }}
         onRegister={() =>
           router.push(

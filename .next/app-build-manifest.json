@@ -16,11 +16,6 @@
       "static/chunks/main-app.js",
       "static/chunks/app/(marketing)/membership/page.js"
     ],
-    "/api/subscription-plans/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/subscription-plans/route.js"
-    ],
     "/api/site-settings/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -31,10 +26,25 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/auth/[...nextauth]/route.js"
     ],
+    "/api/subscription-plans/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/subscription-plans/route.js"
+    ],
     "/api/auth/me/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/auth/me/route.js"
+    ],
+    "/api/subscriptions/initiate/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/subscriptions/initiate/route.js"
+    ],
+    "/api/payment/initiate-link-payment/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/payment/initiate-link-payment/route.js"
     ]
   }
 }

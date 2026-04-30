@@ -120,13 +120,25 @@ function SuccessContent() {
 
     const poll = async () => {
       try {
-        const res = await fetch(
-          `/api/urubutopay/transaction?reference=${encodeURIComponent(reference)}`
-        );
-        const data = await res.json().catch(() => ({}));
+        const [txRes, subRes] = await Promise.all([
+          fetch(`/api/urubutopay/transaction?reference=${encodeURIComponent(reference)}`),
+          fetch(`/api/subscriptions/status?reference=${encodeURIComponent(reference)}`),
+        ]);
+        const data = await txRes.json().catch(() => ({}));
+        const subData = await subRes.json().catch(() => ({}));
         if (cancelled) return;
         const s = data.status ?? null;
-        setStatus(s);
+        const subStatus =
+          typeof subData.subscription_status === "string"
+            ? subData.subscription_status
+            : "";
+        const label =
+          subStatus === "PENDING"
+            ? `${s ?? "…"} / subscription: processing`
+            : subStatus === "ACTIVE"
+              ? `${s ?? "VALID"}`
+              : s;
+        setStatus(label);
 
         if (s === "VALID") {
           if (intervalId) clearInterval(intervalId);
@@ -135,7 +147,7 @@ function SuccessContent() {
           return;
         }
 
-        if (s === "FAILED" || s === "CANCELED") {
+        if (s === "FAILED" || s === "CANCELED" || subStatus === "FAILED") {
           if (intervalId) clearInterval(intervalId);
           setChecking(false);
         }

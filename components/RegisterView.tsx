@@ -1,4 +1,7 @@
+"use client";
+
 import React, { useState } from 'react';
+import { signIn } from 'next-auth/react';
 import { User } from '../types';
 
 const PENDING_REGISTRATION_KEY = 'thinkup_pending_registration';
@@ -87,6 +90,14 @@ const RegisterView: React.FC<RegisterViewProps> = ({
       if (!res.ok) {
         setError(data.error || 'Registration failed. Please try again.');
         return;
+      }
+      const sessionStarted = await signIn('credentials', {
+        email: email.trim().toLowerCase(),
+        password,
+        redirect: false,
+      });
+      if (sessionStarted?.error) {
+        setError('Account created — please sign in with your email and password.');
       }
       onRegister(data as User);
     } catch {

@@ -1,4 +1,7 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
+import { signIn } from 'next-auth/react';
 import { User } from '../types';
 import Logo from './Logo';
 
@@ -15,6 +18,8 @@ const LoginView: React.FC<LoginViewProps> = ({ initialError, onLogin, onRegister
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(initialError ?? null);
   const [loading, setLoading] = useState(false);
+  const [magicBusy, setMagicBusy] = useState(false);
+  const [magicSent, setMagicSent] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialError != null) setError(initialError);
@@ -40,11 +45,48 @@ const LoginView: React.FC<LoginViewProps> = ({ initialError, onLogin, onRegister
         setError(data.error || 'Sign in failed. Please try again.');
         return;
       }
+      const jwt = await signIn('credentials', {
+        email: email.trim(),
+        password,
+        redirect: false,
+      });
+      if (jwt?.error) {
+        setError('Sign-in succeeded but session could not start. Refresh and try again.');
+        return;
+      }
       onLogin(data as User);
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMagicLink = async () => {
+    setError(null);
+    setMagicSent(null);
+    const em = email.trim().toLowerCase();
+    if (!em || !em.includes('@')) {
+      setError('Enter your email above to receive a magic link.');
+      return;
+    }
+    setMagicBusy(true);
+    try {
+      const res = await fetch('/api/auth/magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: em }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Could not send magic link. Try password sign-in.');
+        return;
+      }
+      setMagicSent(`Check ${em} for your sign-in link (expires in 15 minutes).`);
+    } catch {
+      setError('Something went wrong. Try again.');
+    } finally {
+      setMagicBusy(false);
     }
   };
 
@@ -55,7 +97,7 @@ const LoginView: React.FC<LoginViewProps> = ({ initialError, onLogin, onRegister
           <Logo size="xl" className="mx-auto mb-8 shadow-2xl shadow-indigo-100 p-4 bg-slate-50 rounded-[2.5rem]" />
           <h1 className="text-3xl font-black text-slate-900 mb-3 tracking-tighter">Welcome back</h1>
           <p className="text-sm text-slate-400 font-medium leading-relaxed px-4">
-            Sign in to continue reading independent, deep-dive journalism.
+            Sign in with a magic link (email only) or your password.
           </p>
         </div>
 
@@ -65,8 +107,27 @@ const LoginView: React.FC<LoginViewProps> = ({ initialError, onLogin, onRegister
             {error}
           </div>
         )}
+        {magicSent && (
+          <div className="mb-8 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-emerald-800 text-xs font-bold">
+            {magicSent}
+          </div>
+        )}
+
+        <div className="mb-8 p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Magic link</p>
+          <p className="text-xs text-slate-500 font-medium">We will email you a one-time link — no password.</p>
+          <button
+            type="button"
+            onClick={handleMagicLink}
+            disabled={magicBusy}
+            className="w-full bg-indigo-600 text-white text-xs font-black py-4 rounded-2xl tracking-[0.15em] uppercase hover:bg-indigo-700 transition-all disabled:opacity-60"
+          >
+            {magicBusy ? 'Sending…' : 'Email me a sign-in link'}
+          </button>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Or password</p>
           <div className="space-y-2">
             <label htmlFor="login-email" className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
               Email Address
