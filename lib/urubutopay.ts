@@ -26,9 +26,9 @@ export function getMerchantCode(): string | undefined {
 export function getServiceCodeForPlan(planId: string): string | undefined {
   const env = process.env;
   if (planId === "plan_annual")
-    return env.URUBUTOPAY_SERVICE_CODE_ANNUAL?.trim() || "annual-package-1773437434609";
+    return env.URUBUTOPAY_SERVICE_CODE_ANNUAL?.trim() || "annual-package-1777494294743";
   if (planId === "plan_per_article")
-    return env.URUBUTOPAY_SERVICE_CODE_PER_ARTICLE?.trim() || "subscrption-fee-1773436992502";
+    return env.URUBUTOPAY_SERVICE_CODE_PER_ARTICLE?.trim() || "per-article-package-1777494222439";
   return undefined;
 }
 

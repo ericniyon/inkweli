@@ -443,6 +443,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/urubutopay/portal-root/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/urubutopay/portal-root">> = Specific
+  const handler = {} as typeof import("../../app/api/urubutopay/portal-root/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/urubutopay/transaction/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/urubutopay/transaction">> = Specific
