@@ -143,18 +143,18 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
 
   const bodyPayload: Record<string, unknown> = {
     currency: "RWF",
-    merchant_code: "TH13614487",
+    merchant_code: merchantCode,
     paid_amount: amount,
-    payer_code: "PYR14516012",
-    payer_email: "ericniyonkuru0007@gmail.com",
-    payer_names: "EWS",
-    payer_phone_number: "250788616703",
+    payer_code: payer_code,
+    payer_email: email,
+    payer_names: name,
+    payer_phone_number: phoneNorm,
     payer_to_be_charged: "YES",
-    payment_channel: "WALLET",
-    payment_channel_name: "MOMO",
-    service_code: "subscription-9644",
-    service_id: "9548",
-    redirect_url: "https://yourapp.com/payment/callback",
+    payment_channel: paymentChannel,
+    payment_channel_name: channelName,
+    service_code: gatewayServiceCode,
+    service_id: configuredServiceId,
+    redirect_url: redirectionOutbound,
   };
 
   const trimmed = Object.fromEntries(
