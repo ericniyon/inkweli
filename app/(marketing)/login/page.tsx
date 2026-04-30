@@ -8,6 +8,22 @@ import { PENDING_PLAN_STORAGE_KEY } from "@/constants";
 
 const ERROR_MESSAGE = "Sign-in failed. Please try again.";
 
+function normalizeInternalPath(input: string | null): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return trimmed;
+  try {
+    const parsed = new URL(trimmed);
+    if (typeof window !== "undefined" && parsed.origin !== window.location.origin) return null;
+    const full = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    if (!full.startsWith("/") || full.startsWith("//")) return null;
+    return full;
+  } catch {
+    return null;
+  }
+}
+
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -15,20 +31,14 @@ function LoginPageContent() {
 
   const paymentRefRaw = searchParams.get("paymentRef")?.trim() ?? "";
 
-  const returnTo = searchParams.get("returnTo");
-  const callbackUrlParam = searchParams.get("callbackUrl");
+  const returnTo = normalizeInternalPath(searchParams.get("returnTo"));
+  const callbackUrlParam = normalizeInternalPath(searchParams.get("callbackUrl"));
   const defaultPath =
     paymentRefRaw
       ? `/membership/success?reference=${encodeURIComponent(paymentRefRaw)}`
-      : returnTo &&
-          typeof returnTo === "string" &&
-          returnTo.startsWith("/") &&
-          !returnTo.includes("//")
+      : returnTo
         ? returnTo
-        : callbackUrlParam &&
-            typeof callbackUrlParam === "string" &&
-            callbackUrlParam.startsWith("/") &&
-            !callbackUrlParam.includes("//")
+        : callbackUrlParam
           ? callbackUrlParam
           : "/dashboard";
 
@@ -62,7 +72,13 @@ function LoginPageContent() {
         }}
         onRegister={() =>
           router.push(
-            paymentRefRaw ? `/register?paymentRef=${encodeURIComponent(paymentRefRaw)}` : "/register"
+            paymentRefRaw
+              ? `/register?paymentRef=${encodeURIComponent(paymentRefRaw)}${
+                  callbackUrlParam ? `&callbackUrl=${encodeURIComponent(callbackUrlParam)}` : ""
+                }`
+              : callbackUrlParam
+                ? `/register?callbackUrl=${encodeURIComponent(callbackUrlParam)}`
+                : "/register"
           )
         }
         onForgotPassword={() => router.push("/forgot-password")}
