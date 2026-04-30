@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
@@ -13,21 +13,110 @@ import {
   clearPendingPaymentRef,
 } from "@/components/PaymentDialog";
 
+async function waitUntil(
+  predicate: () => boolean,
+  timeoutMs: number,
+  cancelled: () => boolean
+): Promise<boolean> {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    if (cancelled()) return false;
+    if (predicate()) return true;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return predicate();
+}
+
 function SuccessContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { setUser } = useAuth();
+  const { setUser, isGuest, hydrated } = useAuth();
+  const guestRef = useRef(isGuest);
+  const hydratedRef = useRef(hydrated);
+
+  useEffect(() => {
+    guestRef.current = isGuest;
+  }, [isGuest]);
+
+  useEffect(() => {
+    hydratedRef.current = hydrated;
+  }, [hydrated]);
+
   const reference =
     searchParams.get("reference") ?? searchParams.get("transaction_id") ?? null;
 
   const [status, setStatus] = useState<string | null>(null);
   const [checking, setChecking] = useState(!!reference);
-  const [completed, setCompleted] = useState(false);
+  const postValidDone = useRef(false);
 
   useEffect(() => {
-    if (!reference || completed) return;
+    if (!reference) {
+      setChecking(false);
+      return;
+    }
 
     let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+
+    const runAfterValidated = async () => {
+      if (postValidDone.current || cancelled) return;
+      postValidDone.current = true;
+
+      const pending = getPendingRegistration();
+      const pendingPayment = getPendingPaymentRef();
+
+      if (pending && pendingPayment && pendingPayment.reference === reference) {
+        try {
+          const regRes = await fetch("/api/auth/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: pending.name,
+              email: pending.email,
+              password: pending.password,
+              planId: pendingPayment.planId,
+            }),
+          });
+          const userData = await regRes.json().catch(() => ({}));
+          if (regRes.ok && userData.id) {
+            clearPendingRegistration();
+            clearPendingPaymentRef();
+            setUser(userData);
+            router.push("/dashboard");
+            return;
+          }
+        } catch {
+          postValidDone.current = false;
+        }
+      }
+
+      const ready = await waitUntil(
+        () => hydratedRef.current,
+        12000,
+        () => cancelled
+      );
+      if (cancelled || !ready) return;
+
+      if (guestRef.current) {
+        router.replace(`/register?paymentRef=${encodeURIComponent(reference)}`);
+        return;
+      }
+
+      try {
+        const claimRes = await fetch("/api/urubutopay/claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ paymentReference: reference }),
+        });
+        const userData = await claimRes.json().catch(() => ({}));
+        if (claimRes.ok && userData.id) {
+          setUser(userData);
+        }
+      } catch {
+        // non-fatal
+      }
+    };
 
     const poll = async () => {
       try {
@@ -40,54 +129,31 @@ function SuccessContent() {
         setStatus(s);
 
         if (s === "VALID") {
-          setCompleted(true);
+          if (intervalId) clearInterval(intervalId);
           setChecking(false);
-
-          const pending = getPendingRegistration();
-          const pendingPayment = getPendingPaymentRef();
-
-          if (pending && pendingPayment && pendingPayment.reference === reference) {
-            try {
-              const regRes = await fetch("/api/auth/register", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  name: pending.name,
-                  email: pending.email,
-                  password: pending.password,
-                  planId: pendingPayment.planId,
-                }),
-              });
-              const userData = await regRes.json().catch(() => ({}));
-              if (regRes.ok && userData.id) {
-                clearPendingRegistration();
-                clearPendingPaymentRef();
-                setUser(userData);
-                router.push("/dashboard");
-                return;
-              }
-            } catch {
-              // continue to show success UI
-            }
-          }
+          await runAfterValidated();
+          return;
         }
 
         if (s === "FAILED" || s === "CANCELED") {
+          if (intervalId) clearInterval(intervalId);
           setChecking(false);
-          return;
         }
       } catch {
         if (!cancelled) setChecking(false);
       }
     };
 
-    poll();
-    const interval = setInterval(poll, 3000);
+    void poll();
+    intervalId = setInterval(poll, 3000);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (intervalId) clearInterval(intervalId);
     };
-  }, [reference, completed, setUser, router]);
+  }, [reference, router, setUser]);
+
+  const showGuestRedirect =
+    !checking && !!reference && hydrated && status === "VALID" && isGuest;
 
   return (
     <div className="min-h-[calc(100vh-140px)] animate-fade-in bg-white flex items-center justify-center px-4">
@@ -113,11 +179,13 @@ function SuccessContent() {
         <p className="font-charter text-slate-600 text-base mb-6">
           {checking
             ? "Confirming your payment…"
-            : "We have received your payment. Your access will be updated shortly. If you have an account, log in to see your benefits."}
+            : showGuestRedirect
+              ? "Next: create your account so we can link this payment."
+              : "We have received your payment. Your access updates once the payment is linked to your account."}
         </p>
         {reference && (
           <p className="text-sm text-slate-400 mb-8">
-            Reference: <span className="font-mono">{reference}</span>
+            Reference: <span className="font-mono break-all">{reference}</span>
             {status && (
               <span className="ml-2 text-slate-500">({status})</span>
             )}

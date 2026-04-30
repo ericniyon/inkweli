@@ -434,10 +434,28 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/urubutopay/claim/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/urubutopay/claim">> = Specific
+  const handler = {} as typeof import("../../app/api/urubutopay/claim/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/urubutopay/initiate/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/urubutopay/initiate">> = Specific
   const handler = {} as typeof import("../../app/api/urubutopay/initiate/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/urubutopay/payment-claim-status/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/urubutopay/payment-claim-status">> = Specific
+  const handler = {} as typeof import("../../app/api/urubutopay/payment-claim-status/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

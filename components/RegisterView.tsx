@@ -32,9 +32,16 @@ interface RegisterViewProps {
   onLogin: () => void;
   /** Called after saving registration data; user must complete payment to finish. */
   onProceedToPayment?: () => void;
+  /** After external payment (no email on webhook): user must finish signup here; POST includes this ref. */
+  forcedPaymentReference?: string;
 }
 
-const RegisterView: React.FC<RegisterViewProps> = ({ onRegister, onLogin, onProceedToPayment }) => {
+const RegisterView: React.FC<RegisterViewProps> = ({
+  onRegister,
+  onLogin,
+  onProceedToPayment,
+  forcedPaymentReference,
+}) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -56,7 +63,7 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onRegister, onLogin, onProc
 
     setLoading(true);
     try {
-      if (onProceedToPayment) {
+      if (onProceedToPayment && !forcedPaymentReference) {
         sessionStorage.setItem(
           PENDING_REGISTRATION_KEY,
           JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password })
@@ -71,6 +78,9 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onRegister, onLogin, onProc
           name: name.trim(),
           email: email.trim(),
           password,
+          ...(forcedPaymentReference
+            ? { paymentReference: forcedPaymentReference.trim() }
+            : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -94,7 +104,21 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onRegister, onLogin, onProc
             <span className="text-white font-black text-3xl">U</span>
           </div>
           <h1 className="text-3xl font-black text-slate-900 mb-2 tracking-tighter">Join usethinkup</h1>
-          <p className="text-sm text-slate-400 font-medium leading-relaxed px-4">Start your subscription journey and unlock deep-dive analysis.</p>
+          {forcedPaymentReference ? (
+            <>
+              <p className="text-sm text-amber-800 font-bold leading-relaxed px-4 bg-amber-50 border border-amber-100 rounded-2xl py-3">
+                Finish creating your account so we can link this payment reference and unlock your plan:
+                <span className="font-mono text-xs font-normal block mt-2 break-all">{forcedPaymentReference}</span>
+              </p>
+              <p className="text-sm text-slate-400 font-medium leading-relaxed px-4 mt-3">
+                Use the email you intend to receive member updates on (same as checkout if UrubutoPay collected it).
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-slate-400 font-medium leading-relaxed px-4">
+              Start your subscription journey and unlock deep-dive analysis.
+            </p>
+          )}
         </div>
 
         {error && (
@@ -152,7 +176,13 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onRegister, onLogin, onProc
             disabled={loading}
             className="w-full bg-slate-900 text-white text-xs font-black py-5 rounded-3xl tracking-[0.2em] uppercase hover:bg-indigo-600 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-slate-200 mt-4 disabled:opacity-60 disabled:pointer-events-none"
           >
-            {loading ? 'Redirecting…' : onProceedToPayment ? 'Proceed to payment' : 'Create Account'}
+            {loading
+              ? forcedPaymentReference
+                ? 'Linking payment…'
+                : 'Redirecting…'
+              : forcedPaymentReference
+                ? 'Create account & claim access'
+              : onProceedToPayment ? 'Proceed to payment' : 'Create Account'}
           </button>
         </form>
 

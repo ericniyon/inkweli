@@ -57,6 +57,28 @@ function getStr(p: Payload, ...keys: string[]): string | null {
   return null;
 }
 
+/** Payload often lacks top-level payer_email — check aliases and nested `data`. */
+function extractPayerEmailFromPayload(payload: Payload): string | null {
+  const top = getStr(
+    payload,
+    "payer_email",
+    "payerEmail",
+    "email",
+    "customer_email",
+    "customerEmail",
+    "buyer_email",
+    "buyerEmail",
+    "user_email",
+    "userEmail"
+  );
+  if (top) return top;
+  const data = payload.data;
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    return extractPayerEmailFromPayload(data as Payload);
+  }
+  return null;
+}
+
 /** Payment notification / reversal callback (reads raw body only for signature). */
 export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: string): Promise<Response> {
   try {
@@ -94,14 +116,7 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
     const transactionId = getStr(payload, "transaction_id", "transactionId");
     const internalTransactionId = getStr(payload, "internal_transaction_id", "internalTransactionId");
     const payerCode = getStr(payload, "payer_code", "payerCode");
-    const email = getStr(
-      payload,
-      "payer_email",
-      "payerEmail",
-      "email",
-      "customer_email",
-      "customerEmail"
-    );
+    const email = extractPayerEmailFromPayload(payload);
 
     const ref = transactionId || internalTransactionId || payerCode;
     if (!ref) {
@@ -216,9 +231,52 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
     }
 
     const tier = planIdToTier(tx?.planId);
+    const phoneOut =
+      getStr(payload, "payer_phone_number", "phone_number", "payer_phone", "payerPhone") ?? "";
+
+    // Urubutu often omits email in webhook; if we linked the txn to a user at initiate/upgrade,
+    // apply tier without requiring email on the payload.
+    if (tx?.userId) {
+      await prisma.user
+        .update({
+          where: { id: tx.userId },
+          data: { tier },
+        })
+        .catch(() => {});
+
+      const linked = await prisma.user.findUnique({
+        where: { id: tx.userId },
+        select: { email: true },
+      });
+
+      logUrubutuPayEvent("webhook", "payment_success_tier_by_tx_user_id", {
+        ref,
+        tier,
+        email: maskEmail(linked?.email ?? undefined),
+      });
+
+      const responseEmail =
+        linked?.email ?? email ?? tx?.email ?? "";
+
+      return NextResponse.json({
+        timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
+        status: 200,
+        message: "successful",
+        data: {
+          internal_transaction_id: tx.transactionId ?? ref,
+          external_transaction_id: internalTransactionId ?? ref,
+          payer_phone_number: phoneOut,
+          payer_email: responseEmail,
+        },
+      });
+    }
+
     const userEmail = email ?? tx?.email ?? null;
     if (!userEmail) {
-      console.warn("[webhooks/urubutopay] Success but no email", { ref, payload: Object.keys(payload) });
+      console.warn("[webhooks/urubutopay] Success but no email and no txn.userId — cannot match account", {
+        ref,
+        payloadKeys: Object.keys(payload),
+      });
       logUrubutuPayEvent("webhook", "paid_no_email_skip_tier", { ref });
       return NextResponse.json({
         timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
@@ -265,7 +323,7 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
       data: {
         internal_transaction_id: tx?.transactionId ?? ref,
         external_transaction_id: internalTransactionId ?? ref,
-        payer_phone_number: getStr(payload, "payer_phone_number", "phone_number") ?? "",
+        payer_phone_number: phoneOut,
         payer_email: userEmail,
       },
     });

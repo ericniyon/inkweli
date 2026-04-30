@@ -12,14 +12,24 @@ function LoginPageContent() {
   const searchParams = useSearchParams();
   const { setUser } = useAuth();
 
+  const paymentRefRaw = searchParams.get("paymentRef")?.trim() ?? "";
+
   const returnTo = searchParams.get("returnTo");
   const callbackUrlParam = searchParams.get("callbackUrl");
   const defaultPath =
-    returnTo && typeof returnTo === "string" && returnTo.startsWith("/") && !returnTo.includes("//")
-      ? returnTo
-      : callbackUrlParam && typeof callbackUrlParam === "string" && callbackUrlParam.startsWith("/") && !callbackUrlParam.includes("//")
-        ? callbackUrlParam
-        : "/dashboard";
+    paymentRefRaw
+      ? `/membership/success?reference=${encodeURIComponent(paymentRefRaw)}`
+      : returnTo &&
+          typeof returnTo === "string" &&
+          returnTo.startsWith("/") &&
+          !returnTo.includes("//")
+        ? returnTo
+        : callbackUrlParam &&
+            typeof callbackUrlParam === "string" &&
+            callbackUrlParam.startsWith("/") &&
+            !callbackUrlParam.includes("//")
+          ? callbackUrlParam
+          : "/dashboard";
 
   const errorCode = searchParams.get("error");
   const initialError = errorCode ? ERROR_MESSAGE : null;
@@ -33,7 +43,11 @@ function LoginPageContent() {
           const redirectPath = user.role === "ADMIN" ? "/admin" : defaultPath;
           router.push(redirectPath);
         }}
-        onRegister={() => router.push("/register")}
+        onRegister={() =>
+          router.push(
+            paymentRefRaw ? `/register?paymentRef=${encodeURIComponent(paymentRefRaw)}` : "/register"
+          )
+        }
         onForgotPassword={() => router.push("/forgot-password")}
       />
     </div>
