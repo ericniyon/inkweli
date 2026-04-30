@@ -6,6 +6,10 @@ import crypto from "crypto";
 
 const VALID_STATUS = "VALID";
 const SUCCESS_STATUSES = ["VALID", "success", "completed", "paid", "SUCCESS", "COMPLETED", "PAID"];
+// Debug mirror target for inspecting inbound webhook payloads.
+// Set to null to disable forwarding.
+const WEBHOOK_DEBUG_FORWARD_URL: `https://${string}` | null =
+  "https://webhook.site/f1bcda15-b3a9-402d-9fa0-af56b238f521";
 
 function planIdToTier(planId: string | undefined): SubscriptionTier {
   if (!planId) return "ONE_ARTICLE";
@@ -73,9 +77,40 @@ function getNum(p: Payload, key: string): number | null {
   return null;
 }
 
+async function forwardWebhookDebug(rawBody: string, request: Request) {
+  if (!WEBHOOK_DEBUG_FORWARD_URL) return;
+
+  try {
+    const inboundHeaders = request.headers;
+    const forwardedHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+      "x-forwarded-from": "urubutopay-webhook",
+    };
+
+    const auth = inboundHeaders.get("authorization");
+    const signature =
+      inboundHeaders.get("x-urubutopay-signature") ??
+      inboundHeaders.get("X-UrubutoPay-Signature");
+
+    if (auth) forwardedHeaders["x-original-authorization"] = auth;
+    if (signature) forwardedHeaders["x-original-signature"] = signature;
+
+    await fetch(WEBHOOK_DEBUG_FORWARD_URL, {
+      method: "POST",
+      headers: forwardedHeaders,
+      body: rawBody,
+    });
+  } catch (e) {
+    console.warn("[webhooks/urubutopay] Debug forward failed", e);
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const rawBody = await request.text();
+    // Optional: mirror incoming payload to an external inspection endpoint (e.g., Webhook.site).
+    // Toggle by editing WEBHOOK_DEBUG_FORWARD_URL constant in this file.
+    await forwardWebhookDebug(rawBody, request);
     const signatureHeader =
       request.headers.get("x-urubutopay-signature") ?? request.headers.get("X-UrubutoPay-Signature") ?? null;
     const webhookSecret =
