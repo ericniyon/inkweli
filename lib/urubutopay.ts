@@ -3,6 +3,8 @@
  * Docs: UrubutoPay Integration Guide – Initiate Payment, Transaction Status, etc.
  */
 
+import { URUBUTO_INITIATE_LINK_PAYMENT_URL } from "@/constants";
+
 const STAGING_BASE = "https://staging.urubutopay.rw";
 const PRODUCTION_BASE = "https://urubutopay.rw";
 
@@ -28,15 +30,19 @@ export function getApiKey(): string | undefined {
   const prod = process.env.URUBUTOPAY_API_KEY_PRODUCTION?.trim();
   const staging = process.env.URUBUTOPAY_API_KEY_STAGING?.trim();
   const generic = process.env.URUBUTOPAY_API_KEY?.trim();
-  if (urubutuPayUsesLiveGateway()) return prod || generic;
-  return staging || generic;
+  const legacyUrubutu = process.env.URUBUTO_API_KEY?.trim();
+  if (urubutuPayUsesLiveGateway()) return prod || generic || legacyUrubutu;
+  return staging || generic || legacyUrubutu;
 }
 
 export function getMerchantCode(): string | undefined {
-  return process.env.URUBUTOPAY_MERCHANT_CODE?.trim();
+  return (
+    process.env.URUBUTOPAY_MERCHANT_CODE?.trim() ||
+    process.env.URUBUTO_MERCHANT_CODE?.trim()
+  );
 }
 
-/** Service code for a plan id (from env or fallback). */
+/** PWL product slug (`paymentLinkId` in initiate-link-payment; path segment after `/pwl/`). */
 export function getServiceCodeForPlan(planId: string): string | undefined {
   const env = process.env;
   if (planId === "plan_annual")
@@ -44,6 +50,21 @@ export function getServiceCodeForPlan(planId: string): string | undefined {
   if (planId === "plan_per_article")
     return env.URUBUTOPAY_SERVICE_CODE_PER_ARTICLE?.trim() || "per-article-package-1777494222439";
   return undefined;
+}
+
+/**
+ * Gateway `service_code` on initiate-link-payment (often differs from PWL slug).
+ * Falls back to the PWL slug when URUBUTOPAY_INITIATE_SERVICE_CODE_* is unset.
+ */
+export function getInitiateGatewayServiceCode(planId: string): string | undefined {
+  const env = process.env;
+  const override =
+    planId === "plan_annual"
+      ? env.URUBUTOPAY_INITIATE_SERVICE_CODE_ANNUAL?.trim()
+      : planId === "plan_per_article"
+        ? env.URUBUTOPAY_INITIATE_SERVICE_CODE_PER_ARTICLE?.trim()
+        : undefined;
+  return override || getServiceCodeForPlan(planId);
 }
 
 function authHeader(): Record<string, string> {
@@ -54,26 +75,32 @@ function authHeader(): Record<string, string> {
 
 export type PaymentChannel = "MOMO" | "AIRTEL_MONEY" | "CARD";
 
+/**
+ * initiate-link-payment JSON body.
+ * Omit `service_id` / `payment_link_id` when unset — Urubutu rejects empty strings.
+ */
 export interface InitiatePaymentParams {
+  currency: string;
   merchant_code: string;
+  paid_mount: number;
   payer_code: string;
+  payer_email: string;
   payer_names: string;
-  payer_email?: string;
+  payer_phone_number: string;
+  payer_to_be_charged: "YES" | "NO";
+  paymentLinkId: string;
+  payment_channel: "WALLET" | "CARD";
+  payment_channel_name: PaymentChannel;
+  redirection_url: string;
+  service_code: string;
   phone_number: string;
-  payer_phone_number?: string;
   amount: number;
-  paid_mount?: number;
-  currency?: string;
   channel_name: PaymentChannel;
-  payment_channel?: "WALLET" | "CARD";
-  payment_channel_name?: PaymentChannel;
-  payer_to_be_charged?: "YES" | "NO";
-  paymentLinkId?: string;
+  transaction_id: string;
+  need_instant_wallet_settlement?: string;
+  payer_card_number?: string;
   payment_link_id?: string;
   service_id?: string;
-  transaction_id: string;
-  service_code: string;
-  redirection_url?: string;
 }
 
 export interface InitiatePaymentResponse {
@@ -98,20 +125,22 @@ export interface InitiatePaymentResponse {
   };
 }
 
-const INITIATE_LINK_PAYMENT_URL =
-  "https://urubutopay.rw/api/payment/initiate-link-payment";
-
 export async function initiatePayment(
   params: InitiatePaymentParams
 ): Promise<InitiatePaymentResponse> {
-  const url = INITIATE_LINK_PAYMENT_URL;
+  const payload = Object.fromEntries(
+    Object.entries(params as unknown as Record<string, unknown>).filter(
+      ([, v]) => v !== undefined && v !== ""
+    )
+  );
+  const url = URUBUTO_INITIATE_LINK_PAYMENT_URL;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...authHeader(),
     },
-    body: JSON.stringify(params),
+    body: JSON.stringify(payload),
   });
   const data = (await res.json().catch(() => ({}))) as InitiatePaymentResponse;
   return { ...data, status: data.status ?? res.status };

@@ -30,6 +30,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   urubutoPayTransactions UrubutoPayTransaction[]
   subscriptions            Subscription[]
+  payments                 Payment[]
 }
 
 model Writer {
@@ -241,6 +242,21 @@ model MagicLinkToken {
   createdAt DateTime  @default(now()) @map("created_at")
 
   @@map("magic_link_tokens")
+}
+
+model Payment {
+  id               String   @id @default(cuid())
+  userId           String   @map("user_id")
+  planId           String   @map("plan_id")
+  payerCode        String   @map("payer_code")
+  paymentReference String   @unique @map("payment_reference")
+  amount           Int
+  status           String   @default("pending")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
 }
 
 model UrubutoPayTransaction {

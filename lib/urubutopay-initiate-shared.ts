@@ -1,21 +1,111 @@
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { SUBSCRIPTION_PLANS } from "@/constants";
+import { SUBSCRIPTION_PLANS, URUBUTO_INITIATE_LINK_PAYMENT_URL } from "@/constants";
 import type { SubscriptionTier } from "@prisma/client";
 import {
   getApiKey,
   getMerchantCode,
+  getBaseUrl,
   getServiceCodeForPlan,
+  getInitiateGatewayServiceCode,
   initiatePayment,
+  type InitiatePaymentParams,
   type PaymentChannel,
 } from "@/lib/urubutopay";
 import { logUrubutuPayEvent } from "@/lib/urubutopay-debug-log";
 import { getAppOrigin } from "@/lib/app-origin";
 
+/** Match Urubutu samples: 2507… or 078… */
+function normalizeRwPayerPhone(raw: string): string {
+  const d = raw.trim().replace(/\s/g, "");
+  if (!d) return d;
+  if (d.startsWith("250")) return d;
+  if (d.startsWith("0")) return `250${d.slice(1)}`;
+  return d;
+}
+
 export function planIdToTier(planId: string): SubscriptionTier {
   if (planId === "plan_annual") return "UNLIMITED";
   if (planId === "plan_per_article") return "ONE_ARTICLE";
   return "ONE_ARTICLE";
+}
+
+function tierFromDbRow(rawTier: string): SubscriptionTier {
+  const u = rawTier.trim().toUpperCase();
+  if (
+    u === "UNLIMITED" ||
+    u === "TWO_ARTICLES" ||
+    u === "ONE_ARTICLE" ||
+    u === "NONE"
+  ) {
+    return u as SubscriptionTier;
+  }
+  return "ONE_ARTICLE";
+}
+
+/** Urubutu slug + env keys (`plan_*`) may differ from `SubscriptionPlan.id` (`plan_novis`, …). */
+export async function resolveCheckoutPlan(planIdFromClient: string): Promise<
+  | {
+      canonicalGatewayPlanId: "plan_annual" | "plan_per_article";
+      price: number;
+      currency: string;
+      tierForTransaction: SubscriptionTier;
+      clientPlanId: string;
+    }
+  | { error: string }
+> {
+  const fromConstants = SUBSCRIPTION_PLANS.find((p) => p.id === planIdFromClient);
+  if (fromConstants) {
+    const canonicalGatewayPlanId =
+      fromConstants.id === "plan_annual" ? "plan_annual" : "plan_per_article";
+    return {
+      canonicalGatewayPlanId,
+      price: fromConstants.price,
+      currency: fromConstants.currency || "RWF",
+      tierForTransaction: planIdToTier(fromConstants.id),
+      clientPlanId: planIdFromClient,
+    };
+  }
+
+  const row = await prisma.subscriptionPlan.findUnique({
+    where: { id: planIdFromClient },
+  });
+
+  /** Aligned with `prisma/seed.ts` — used when the DB isn’t seeded but the UI still uses these ids */
+  const SEEDED_FALLBACK: Record<
+    string,
+    { price: number; tier: SubscriptionTier; interval: string }
+  > = {
+    plan_novis: { price: 10000, tier: "ONE_ARTICLE", interval: "month" },
+    plan_pro: { price: 20000, tier: "TWO_ARTICLES", interval: "month" },
+  };
+
+  const rowOrFallback =
+    row ??
+    (() => {
+      const fb = SEEDED_FALLBACK[planIdFromClient];
+      return fb ? { tier: fb.tier, price: fb.price, interval: fb.interval } : null;
+    })();
+
+  if (!rowOrFallback) return { error: "Invalid planId" };
+
+  const tierForTransaction = row
+    ? tierFromDbRow(row.tier)
+    : tierFromDbRow(String(rowOrFallback.tier));
+
+  const intervalLc = rowOrFallback.interval.trim().toLowerCase();
+  const canonicalGatewayPlanId =
+    intervalLc === "year" || tierForTransaction === "UNLIMITED"
+      ? "plan_annual"
+      : "plan_per_article";
+
+  return {
+    canonicalGatewayPlanId,
+    price: rowOrFallback.price,
+    currency: "RWF",
+    tierForTransaction,
+    clientPlanId: planIdFromClient,
+  };
 }
 
 export type InitiateUrubutuResult =
@@ -52,14 +142,18 @@ export async function createUrubutuTransactionAndInitiate(args: {
     return { ok: false, status: 503, error: "UrubutoPay not configured (API key or merchant code)" };
   }
 
-  const plan = SUBSCRIPTION_PLANS.find((p) => p.id === args.planId);
-  if (!plan) {
-    return { ok: false, status: 400, error: "Invalid planId" };
+  const resolved = await resolveCheckoutPlan(args.planId);
+  if ("error" in resolved) {
+    return { ok: false, status: 400, error: resolved.error };
   }
 
-  const serviceCode = getServiceCodeForPlan(args.planId);
-  if (!serviceCode) {
-    return { ok: false, status: 400, error: "Service code not configured for this plan" };
+  const { canonicalGatewayPlanId, price: planPrice, currency: planCurrency, tierForTransaction, clientPlanId } =
+    resolved;
+
+  const pwlSlug = getServiceCodeForPlan(canonicalGatewayPlanId);
+  const gatewayServiceCode = getInitiateGatewayServiceCode(canonicalGatewayPlanId);
+  if (!pwlSlug || !gatewayServiceCode) {
+    return { ok: false, status: 400, error: "Service codes not configured for this plan" };
   }
 
   const transactionId =
@@ -67,38 +161,47 @@ export async function createUrubutuTransactionAndInitiate(args: {
     `ink_${Date.now()}_${randomBytes(4).toString("hex")}`;
   const appUrl = getAppOrigin();
   const defaultReturnUrl = `${appUrl}/membership/success?reference=${encodeURIComponent(transactionId)}`;
-  const redirectionUrl = args.returnUrl || defaultReturnUrl;
+  const appReturnRedirectionUrl = args.returnUrl || defaultReturnUrl;
   const paymentChannel: "WALLET" | "CARD" =
     args.channelName === "CARD" ? "CARD" : "WALLET";
   const configuredPaymentLinkId =
-    args.planId === "plan_annual"
+    canonicalGatewayPlanId === "plan_annual"
       ? process.env.URUBUTOPAY_PAYMENT_LINK_ID_ANNUAL?.trim()
       : process.env.URUBUTOPAY_PAYMENT_LINK_ID_PER_ARTICLE?.trim();
   const configuredServiceId =
-    args.planId === "plan_annual"
+    canonicalGatewayPlanId === "plan_annual"
       ? process.env.URUBUTOPAY_SERVICE_ID_ANNUAL?.trim()
       : process.env.URUBUTOPAY_SERVICE_ID_PER_ARTICLE?.trim();
 
-  const params = {
+  const pwlRedirectBase = getBaseUrl();
+  const redirectionPwl = `${pwlRedirectBase}/pwl/${pwlSlug}?pwlId=${pwlSlug}`;
+  const redirectionOutbound =
+    args.channelName === "CARD" ? appReturnRedirectionUrl : redirectionPwl;
+
+  const phoneNorm = normalizeRwPayerPhone(args.phoneNumber);
+  const amt = planPrice;
+  const payerEmailStr = typeof args.payerEmail === "string" ? args.payerEmail.trim() : "";
+
+  const params: InitiatePaymentParams = {
+    currency: planCurrency || "RWF",
     merchant_code: merchantCode,
+    paid_mount: amt,
     payer_code: transactionId,
-    payer_names: args.payerName,
-    payer_email: args.payerEmail ?? undefined,
-    phone_number: args.phoneNumber,
-    payer_phone_number: args.phoneNumber,
-    amount: plan.price,
-    paid_mount: plan.price,
-    currency: plan.currency || "RWF",
-    channel_name: args.channelName,
+    payer_email: payerEmailStr,
+    payer_names: args.payerName.trim(),
+    payer_phone_number: phoneNorm,
+    payer_to_be_charged: "YES",
+    paymentLinkId: pwlSlug,
     payment_channel: paymentChannel,
     payment_channel_name: args.channelName,
-    payer_to_be_charged: "YES" as const,
-    paymentLinkId: serviceCode,
-    payment_link_id: configuredPaymentLinkId || undefined,
-    service_id: configuredServiceId || undefined,
+    redirection_url: redirectionOutbound,
+    service_code: gatewayServiceCode,
+    phone_number: phoneNorm,
+    amount: amt,
+    channel_name: args.channelName,
     transaction_id: transactionId,
-    service_code: serviceCode,
-    ...(args.channelName === "CARD" && { redirection_url: redirectionUrl }),
+    ...(configuredPaymentLinkId ? { payment_link_id: configuredPaymentLinkId } : {}),
+    ...(configuredServiceId ? { service_id: configuredServiceId } : {}),
   };
 
   const tx = await prisma.urubutoPayTransaction.create({
@@ -106,10 +209,10 @@ export async function createUrubutuTransactionAndInitiate(args: {
       transactionId,
       payerCode: transactionId,
       userId: args.userId ?? null,
-      tier: planIdToTier(args.planId),
-      planId: args.planId,
-      amount: plan.price,
-      currency: plan.currency || "RWF",
+      tier: tierForTransaction,
+      planId: clientPlanId,
+      amount: planPrice,
+      currency: planCurrency || "RWF",
       channel: args.channelName,
       status: "INITIATED",
       payerNames: args.payerName,
@@ -121,11 +224,16 @@ export async function createUrubutuTransactionAndInitiate(args: {
     return { ok: false, status: 500, error: "Failed to create transaction record" };
   }
 
+  logUrubutuPayEvent("initiate", "provider_post", {
+    transactionId,
+    url: URUBUTO_INITIATE_LINK_PAYMENT_URL,
+  });
+
   const result = await initiatePayment(params);
 
   logUrubutuPayEvent("initiate", "provider_response", {
     transactionId,
-    planId: args.planId,
+    planId: clientPlanId,
     channelName: args.channelName,
     httpStatus: result.status,
     message: typeof result.message === "string" ? result.message.slice(0, 200) : "",

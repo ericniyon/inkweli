@@ -21,8 +21,10 @@ interface PaymentDialogProps {
   /** Optional: when provided, use these instead of pending registration data */
   payerNameOverride?: string;
   payerEmailOverride?: string;
-  /** Logged-in checkout: POST /api/subscriptions/initiate (pending subscription + user-linked txn). */
+  /** Logged-in upgrade: POST /api/payments/initiate then redirect to provider. */
   authenticatedCheckout?: boolean;
+  /** Signed-in user id — required with authenticatedCheckout for `/api/payments/initiate`. */
+  checkoutUserId?: string | null;
 }
 
 const PENDING_REF_KEY = "inkwell_pending_payment_reference";
@@ -48,53 +50,7 @@ export function getPendingPaymentRef(): { reference: string; planId: string } | 
   return null;
 }
 
-type Channel = "MOMO" | "AIRTEL_MONEY" | "CARD";
-
-async function startPaymentViaLinkFallback(args: {
-  planId: string;
-  channelName: Channel;
-  phoneNumber: string;
-  payerName: string;
-  payerEmail?: string;
-  returnUrl: string;
-}) {
-  return fetch("/api/payment/initiate-link-payment", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({
-      planId: args.planId,
-      channelName: args.channelName,
-      phoneNumber: args.phoneNumber,
-      payerName: args.payerName,
-      payerEmail: args.payerEmail || undefined,
-      returnUrl: args.returnUrl,
-    }),
-  });
-}
-
-async function startPaymentViaCanonicalFallback(args: {
-  planId: string;
-  channelName: Channel;
-  phoneNumber: string;
-  payerName: string;
-  payerEmail?: string;
-  returnUrl: string;
-}) {
-  return fetch("/api/urubutopay/initiate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({
-      planId: args.planId,
-      channelName: args.channelName,
-      phoneNumber: args.phoneNumber,
-      payerName: args.payerName,
-      payerEmail: args.payerEmail || undefined,
-      returnUrl: args.returnUrl,
-    }),
-  });
-}
+type CheckoutChannel = "MOMO" | "AIRTEL_MONEY" | "CARD";
 
 export default function PaymentDialog({
   isOpen,
@@ -104,39 +60,19 @@ export default function PaymentDialog({
   payerNameOverride,
   payerEmailOverride,
   authenticatedCheckout,
+  checkoutUserId,
 }: PaymentDialogProps) {
-  const [channel, setChannel] = useState<Channel>("MOMO");
+  const [channel, setChannel] = useState<CheckoutChannel>("MOMO");
   const [phoneNumber, setPhoneNumber] = useState(
     () => (typeof process !== "undefined" && process.env.NEXT_PUBLIC_URUBUTOPAY_TEST_PHONE) || ""
   );
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [waitingConfirmation, setWaitingConfirmation] = useState(false);
-  const [transactionId, setTransactionId] = useState<string | null>(null);
 
   const pending = getPendingRegistration();
   const payerName = payerNameOverride ?? pending?.name ?? "";
   const payerEmail = payerEmailOverride ?? pending?.email ?? "";
-
-  const pollStatus = async (
-    ref: string
-  ): Promise<{ txnStatus: string | null; subscriptionStatus: string | null }> => {
-    try {
-      const [txRes, subRes] = await Promise.all([
-        fetch(`/api/urubutopay/transaction?reference=${encodeURIComponent(ref)}`),
-        fetch(`/api/subscriptions/status?reference=${encodeURIComponent(ref)}`),
-      ]);
-      const txData = await txRes.json().catch(() => ({}));
-      const subData = await subRes.json().catch(() => ({}));
-      return {
-        txnStatus: typeof txData.status === "string" ? txData.status : null,
-        subscriptionStatus:
-          typeof subData.subscription_status === "string" ? subData.subscription_status : null,
-      };
-    } catch {
-      return { txnStatus: null, subscriptionStatus: null };
-    }
-  };
+  const walletChannel = channel === "MOMO" || channel === "AIRTEL_MONEY";
 
   const handlePay = async () => {
     if (!plan) return;
@@ -145,74 +81,65 @@ export default function PaymentDialog({
 
     const phone = phoneNumber.trim().replace(/\s/g, "");
     if (!phone) {
-      setError("Phone number is required");
+      setError("Phone number is required (used for billing and wallet flows).");
       setProcessing(false);
       return;
     }
 
     try {
       const appUrl = typeof window !== "undefined" ? window.location.origin : "";
-      const returnUrl = `${appUrl}/membership/success`;
 
-      let res = await fetch(
-        authenticatedCheckout ? "/api/subscriptions/initiate" : "/api/urubutopay/initiate",
-        {
+      const initiateApiUrl = appUrl
+        ? `${appUrl}/api/payments/initiate`
+        : "/api/payments/initiate";
+
+      if (authenticatedCheckout && !checkoutUserId) {
+        setError("Sign in is required to complete this payment.");
+        setProcessing(false);
+        return;
+      }
+
+      const initiateBody =
+        authenticatedCheckout && checkoutUserId
+          ? {
+              plan_id: plan.id,
+              amount: plan.price,
+              user_id: checkoutUserId,
+              email: payerEmail || "",
+              name: payerName || "Customer",
+              phone: phone || "",
+              channelName: channel,
+            }
+          : {
+              plan_id: plan.id,
+              amount: plan.price,
+              user_id: checkoutUserId ?? "",
+              email: payerEmail || "",
+              name: payerName || "Customer",
+              phone: phone || "",
+              channelName: channel,
+            };
+
+      const res = await fetch(initiateApiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: authenticatedCheckout
-          ? JSON.stringify({
-              plan_id: plan.id,
-              channelName: channel,
-              phoneNumber: phone,
-              payerName: payerName || "Customer",
-              payerEmail: payerEmail || undefined,
-              returnUrl,
-            })
-          : JSON.stringify({
-              planId: plan.id,
-              channelName: channel,
-              phoneNumber: phone,
-              payerName: payerName || "Customer",
-              payerEmail: payerEmail || undefined,
-              returnUrl,
-            }),
-      }
-      );
-
-      // Backward compatibility: if the subscriptions endpoint is unavailable,
-      // try canonical UrubutoPay initiate and finally link-initiation alias.
-      if (authenticatedCheckout && res.status === 404) {
-        res = await startPaymentViaCanonicalFallback({
-          planId: plan.id,
-          channelName: channel,
-          phoneNumber: phone,
-          payerName: payerName || "Customer",
-          payerEmail: payerEmail || undefined,
-          returnUrl,
-        });
-      }
-
-      if (authenticatedCheckout && res.status === 404) {
-        res = await startPaymentViaLinkFallback({
-          planId: plan.id,
-          channelName: channel,
-          phoneNumber: phone,
-          payerName: payerName || "Customer",
-          payerEmail: payerEmail || undefined,
-          returnUrl,
-        });
-      }
+        body: JSON.stringify(initiateBody),
+      });
 
       const data = await res.json().catch(() => ({}));
 
-      if (res.status === 401 && authenticatedCheckout) {
+      if (res.status === 401) {
         try {
           localStorage.setItem("pending_plan_id", plan.id);
         } catch {
           // ignore
         }
-        setError("Your session expired. Please sign in again to continue checkout.");
+        setError(
+          authenticatedCheckout
+            ? "Your session expired. Please sign in again to continue checkout."
+            : "Please sign in to pay for a membership plan."
+        );
         setProcessing(false);
         return;
       }
@@ -223,69 +150,37 @@ export default function PaymentDialog({
         return;
       }
 
-      const ref = data.payment_reference ?? data.transactionId;
-      if (!ref) {
-        setError("Invalid response from payment server.");
+      const payUrl =
+        typeof data.payment_url === "string" && data.payment_url.trim()
+          ? data.payment_url.trim()
+          : null;
+      const ref =
+        typeof data.payment_reference === "string" && data.payment_reference.trim()
+          ? data.payment_reference.trim()
+          : null;
+      
+      if (payUrl) {
+        if (ref) setPendingPaymentRef(ref, plan.id);
+        window.location.href = payUrl;
+        return;
+      }
+
+      // For wallet payments (MOMO/AIRTEL_MONEY), no redirect URL means payment was initiated
+      // User should complete payment on their phone
+      if (channel === "MOMO" || channel === "AIRTEL_MONEY") {
+        if (ref) setPendingPaymentRef(ref, plan.id);
         setProcessing(false);
+        onClose();
+        // Show success message or redirect to a status page
+        alert(`Payment initiated! Please complete the payment on your phone. Reference: ${ref}`);
         return;
       }
 
-      setPendingPaymentRef(ref, plan.id);
-      setTransactionId(ref);
-
-      const cardHref = data.checkout_url ?? data.cardProcessingUrl;
-      if (channel === "CARD" && typeof cardHref === "string" && cardHref.trim()) {
-        window.location.href = cardHref;
-        return;
-      }
-
-      setWaitingConfirmation(true);
+      setError("Invalid response from payment server.");
       setProcessing(false);
-
-      const maxAttempts = 90;
-      for (let i = 0; i < maxAttempts; i++) {
-        await new Promise((r) => setTimeout(r, 3000));
-        const { txnStatus, subscriptionStatus } = await pollStatus(ref);
-
-        if (authenticatedCheckout) {
-          if (subscriptionStatus === "ACTIVE") {
-            clearPendingPaymentRef();
-            await onPaymentSuccess();
-            onClose();
-            return;
-          }
-          if (subscriptionStatus === "FAILED") {
-            setError("Payment was not completed. Please try again.");
-            setWaitingConfirmation(false);
-            return;
-          }
-          if (txnStatus === "FAILED" || txnStatus === "CANCELED") {
-            setError("Payment was not completed. Please try again.");
-            setWaitingConfirmation(false);
-            return;
-          }
-          continue;
-        }
-
-        if (txnStatus === "VALID") {
-          clearPendingPaymentRef();
-          await onPaymentSuccess();
-          onClose();
-          return;
-        }
-        if (txnStatus === "FAILED" || txnStatus === "CANCELED") {
-          setError("Payment was not completed. Please try again.");
-          setWaitingConfirmation(false);
-          return;
-        }
-      }
-
-      setError("Confirmation is taking longer than expected. Check your phone or try again later.");
-      setWaitingConfirmation(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Payment failed. Please try again.");
       setProcessing(false);
-      setWaitingConfirmation(false);
     }
   };
 
@@ -343,63 +238,49 @@ export default function PaymentDialog({
                 </ul>
               </div>
 
-              {!waitingConfirmation ? (
-                <>
-                  <p className="text-sm font-medium text-slate-700 mb-2">Payment method</p>
-                  <div className="flex gap-2 mb-4">
-                    {(["MOMO", "AIRTEL_MONEY", "CARD"] as const).map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setChannel(c)}
-                        className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition ${
-                          channel === c
-                            ? "bg-slate-900 text-white"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                        }`}
-                      >
-                        {c === "MOMO" ? "MTN MoMo" : c === "AIRTEL_MONEY" ? "Airtel Money" : "Card"}
-                      </button>
-                    ))}
-                  </div>
+              <p className="text-sm font-medium text-slate-700 mb-2">Payment method</p>
+              <div className="flex gap-2 mb-4">
+                {(["MOMO", "AIRTEL_MONEY", "CARD"] as const).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setChannel(c)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition ${
+                      channel === c
+                        ? "bg-slate-900 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {c === "MOMO" ? "MoMo" : c === "AIRTEL_MONEY" ? "Airtel" : "Card"}
+                  </button>
+                ))}
+              </div>
 
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Phone number <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="0781234567"
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent mb-4"
-                  />
-                </>
-              ) : (
-                <div className="mb-6 p-4 bg-amber-50 border border-amber-100 rounded-xl">
-                  <p className="text-sm font-bold text-amber-800">
-                    {authenticatedCheckout
-                      ? "Processing your payment…"
-                      : "Confirm on your phone"}
-                  </p>
-                  <p className="text-sm text-amber-700 mt-1">
-                    {authenticatedCheckout
-                      ? "We are confirming your payment with the gateway. This usually completes within a minute."
-                      : (
-                        <>
-                          Dial <span className="font-mono font-bold">182*7*1#</span> or use the UrubutoPay app to approve the payment.
-                        </>
-                      )}
-                  </p>
-                  {transactionId && (
-                    <p className="text-xs text-slate-500 mt-2">Ref: {transactionId}</p>
-                  )}
-                </div>
-              )}
+              <p className="text-sm text-slate-600 mb-4">
+                {channel === "CARD"
+                  ? "You’ll complete checkout on UrubutoPay’s hosted card page—we’ll send you back here when you’re done."
+                  : channel === "AIRTEL_MONEY"
+                    ? "You'll finish Airtel Money on the UrubutoPay page we open next. Use the billing phone below."
+                    : "You'll finish MTN MoMo on the UrubutoPay page we open next. Use the billing phone below."}
+              </p>
+
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Billing phone{" "}
+                <span className="text-red-500">*</span>
+                {walletChannel ? (
+                  <span className="text-slate-400 font-normal"> (charges this wallet)</span>
+                ) : null}
+              </label>
+              <input
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="0781234567"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent mb-4"
+              />
 
               <p className="text-xs text-slate-500 mb-4">
-                {authenticatedCheckout
-                  ? "After the gateway confirms payment, your subscription is activated automatically—no need to trust this page alone."
-                  : "By completing payment, you will get access according to your chosen package once the payment is confirmed."}
+                After UrubutoPay confirms payment, your access follows the webhook — you can return via the link they provide once payment completes.
               </p>
 
               {error && (
@@ -417,23 +298,21 @@ export default function PaymentDialog({
                 >
                   Cancel
                 </button>
-                {!waitingConfirmation && (
-                  <button
-                    type="button"
-                    onClick={handlePay}
-                    disabled={processing}
-                    className="flex-1 py-3.5 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-slate-800 transition disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {processing ? (
-                      <>
-                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Processing…
-                      </>
-                    ) : (
-                      <>Pay {new Intl.NumberFormat("en-RW").format(plan.price)} RWF</>
-                    )}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handlePay}
+                  disabled={processing}
+                  className="flex-1 py-3.5 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-slate-800 transition disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {processing ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Processing…
+                    </>
+                  ) : (
+                    <>Pay {new Intl.NumberFormat("en-RW").format(plan.price)} RWF</>
+                  )}
+                </button>
               </div>
             </>
           )}
