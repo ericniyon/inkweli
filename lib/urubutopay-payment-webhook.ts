@@ -10,6 +10,10 @@ import {
   maskEmail,
 } from "@/lib/urubutopay-debug-log";
 import { getMerchantCode, getTransactionStatus, urubutuPayUsesLiveGateway } from "@/lib/urubutopay";
+import {
+  syncSubscriptionLedgerFromWebhook,
+  transactionStatusIndicatesFinalFailure,
+} from "@/lib/subscription-ledger";
 
 const SUCCESS_STATUSES = ["VALID", "success", "completed", "paid", "SUCCESS", "COMPLETED", "PAID"];
 
@@ -319,6 +323,17 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
       } else {
         logUrubutuPayEvent("webhook", "reversal_no_matching_tx", { ref });
       }
+
+      await syncSubscriptionLedgerFromWebhook({
+        refs: refBundle.uniqueValues,
+        success: false,
+        failedFinal: true,
+        gateway: "urubutopay",
+        gatewayEmail: email,
+        payload: payload as Record<string, unknown>,
+        primaryRef: ref,
+      });
+
       return NextResponse.json({
         timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
         status: 200,
@@ -377,6 +392,17 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
     }
 
     const isSuccess = transactionStatus !== null && SUCCESS_STATUSES.includes(transactionStatus);
+
+    await syncSubscriptionLedgerFromWebhook({
+      refs: refBundle.uniqueValues,
+      success: !!isSuccess,
+      failedFinal: !isSuccess && transactionStatusIndicatesFinalFailure(transactionStatus),
+      gateway: "urubutopay",
+      gatewayEmail: email,
+      payload: payload as Record<string, unknown>,
+      primaryRef: ref,
+    });
+
     if (!isSuccess) {
       logUrubutuPayEvent("webhook", "notification_not_final_success", {
         ref,

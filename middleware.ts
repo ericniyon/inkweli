@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
+import { resolveNextAuthSecret } from "@/lib/nextauth-secret";
 
 /** Query keys UrubutoPay may append when redirecting payer to callback URL */
 const CALLBACK_KEYS = ["reference", "transaction_id", "transactionId", "order_id", "orderId"];
@@ -18,7 +20,7 @@ function paymentCallbackRedirect(request: NextRequest): NextResponse | null {
   return NextResponse.redirect(dest, 302);
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (pathname === "/") {
@@ -38,9 +40,32 @@ export function middleware(request: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
+  const needsAuthForMembership =
+    pathname === "/membership" ||
+    (pathname.startsWith("/membership/") && pathname !== "/membership/success");
+
+  if (needsAuthForMembership) {
+    const secret = resolveNextAuthSecret();
+    const token = await getToken({
+      req: request,
+      secret,
+    });
+    const t = token as { userId?: string; sub?: string } | null;
+    const authorized = Boolean(t && (t.userId || t.sub));
+    if (!authorized) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = "/login";
+      loginUrl.searchParams.set(
+        "callbackUrl",
+        pathname + (request.nextUrl.search || "")
+      );
+      return NextResponse.redirect(loginUrl);
+    }
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/", "/validation"],
+  matcher: ["/", "/validation", "/membership", "/membership/:path*"],
 };

@@ -60,8 +60,17 @@ export interface InitiatePaymentParams {
   payer_names: string;
   payer_email?: string;
   phone_number: string;
+  payer_phone_number?: string;
   amount: number;
+  paid_mount?: number;
+  currency?: string;
   channel_name: PaymentChannel;
+  payment_channel?: "WALLET" | "CARD";
+  payment_channel_name?: PaymentChannel;
+  payer_to_be_charged?: "YES" | "NO";
+  paymentLinkId?: string;
+  payment_link_id?: string;
+  service_id?: string;
   transaction_id: string;
   service_code: string;
   redirection_url?: string;
@@ -93,7 +102,7 @@ export async function initiatePayment(
   params: InitiatePaymentParams
 ): Promise<InitiatePaymentResponse> {
   const base = getBaseUrl();
-  const url = `${base}/api/v2/payment/initiate`;
+  const url = `${base}/api/payment/initiate-link-payment`;
   const res = await fetch(url, {
     method: "POST",
     headers: {

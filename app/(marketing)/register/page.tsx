@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import RegisterView from "@/components/RegisterView";
+import { PENDING_PLAN_STORAGE_KEY } from "@/constants";
 
 function RegisterPageInner() {
   const router = useRouter();
@@ -16,6 +17,19 @@ function RegisterPageInner() {
       <RegisterView
         onRegister={(user) => {
           setUser(user);
+          try {
+            const pendingPlan =
+              typeof window !== "undefined"
+                ? localStorage.getItem(PENDING_PLAN_STORAGE_KEY)?.trim()
+                : "";
+            if (pendingPlan) {
+              localStorage.removeItem(PENDING_PLAN_STORAGE_KEY);
+              router.push(`/membership?plan=${encodeURIComponent(pendingPlan)}`);
+              return;
+            }
+          } catch {
+            // ignore
+          }
           router.push("/dashboard");
         }}
         onLogin={() =>
@@ -23,7 +37,6 @@ function RegisterPageInner() {
             paymentRef ? `/login?paymentRef=${encodeURIComponent(paymentRef)}` : "/login"
           )
         }
-        onProceedToPayment={paymentRef ? undefined : () => router.push("/membership")}
         forcedPaymentReference={paymentRef}
       />
     </div>

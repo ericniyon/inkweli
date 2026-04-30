@@ -16,11 +16,13 @@ interface PaymentDialogProps {
   isOpen: boolean;
   onClose: () => void;
   plan: PlanForPayment | null;
-  /** Called when payment is completed successfully. Parent should create account and/or update tier and redirect. */
+  /** After provider confirms success (webhook is source of truth). Parent refreshes session / UI. */
   onPaymentSuccess: () => Promise<void>;
   /** Optional: when provided, use these instead of pending registration data */
   payerNameOverride?: string;
   payerEmailOverride?: string;
+  /** Logged-in checkout: POST /api/subscriptions/initiate (pending subscription + user-linked txn). */
+  authenticatedCheckout?: boolean;
 }
 
 const PENDING_REF_KEY = "inkwell_pending_payment_reference";
@@ -48,6 +50,29 @@ export function getPendingPaymentRef(): { reference: string; planId: string } | 
 
 type Channel = "MOMO" | "AIRTEL_MONEY" | "CARD";
 
+async function startPaymentViaLinkFallback(args: {
+  planId: string;
+  channelName: Channel;
+  phoneNumber: string;
+  payerName: string;
+  payerEmail?: string;
+  returnUrl: string;
+}) {
+  return fetch("/api/payment/initiate-link-payment", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      planId: args.planId,
+      channelName: args.channelName,
+      phoneNumber: args.phoneNumber,
+      payerName: args.payerName,
+      payerEmail: args.payerEmail || undefined,
+      returnUrl: args.returnUrl,
+    }),
+  });
+}
+
 export default function PaymentDialog({
   isOpen,
   onClose,
@@ -55,6 +80,7 @@ export default function PaymentDialog({
   onPaymentSuccess,
   payerNameOverride,
   payerEmailOverride,
+  authenticatedCheckout,
 }: PaymentDialogProps) {
   const [channel, setChannel] = useState<Channel>("MOMO");
   const [phoneNumber, setPhoneNumber] = useState(
@@ -69,13 +95,23 @@ export default function PaymentDialog({
   const payerName = payerNameOverride ?? pending?.name ?? "";
   const payerEmail = payerEmailOverride ?? pending?.email ?? "";
 
-  const pollStatus = async (ref: string): Promise<string | null> => {
+  const pollStatus = async (
+    ref: string
+  ): Promise<{ txnStatus: string | null; subscriptionStatus: string | null }> => {
     try {
-      const res = await fetch(`/api/urubutopay/transaction?reference=${encodeURIComponent(ref)}`);
-      const data = await res.json().catch(() => ({}));
-      return data.status ?? null;
+      const [txRes, subRes] = await Promise.all([
+        fetch(`/api/urubutopay/transaction?reference=${encodeURIComponent(ref)}`),
+        fetch(`/api/subscriptions/status?reference=${encodeURIComponent(ref)}`),
+      ]);
+      const txData = await txRes.json().catch(() => ({}));
+      const subData = await subRes.json().catch(() => ({}));
+      return {
+        txnStatus: typeof txData.status === "string" ? txData.status : null,
+        subscriptionStatus:
+          typeof subData.subscription_status === "string" ? subData.subscription_status : null,
+      };
     } catch {
-      return null;
+      return { txnStatus: null, subscriptionStatus: null };
     }
   };
 
@@ -95,20 +131,57 @@ export default function PaymentDialog({
       const appUrl = typeof window !== "undefined" ? window.location.origin : "";
       const returnUrl = `${appUrl}/membership/success`;
 
-      const res = await fetch("/api/urubutopay/initiate", {
+      let res = await fetch(
+        authenticatedCheckout ? "/api/subscriptions/initiate" : "/api/urubutopay/initiate",
+        {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        credentials: "include",
+        body: authenticatedCheckout
+          ? JSON.stringify({
+              plan_id: plan.id,
+              channelName: channel,
+              phoneNumber: phone,
+              payerName: payerName || "Customer",
+              payerEmail: payerEmail || undefined,
+              returnUrl,
+            })
+          : JSON.stringify({
+              planId: plan.id,
+              channelName: channel,
+              phoneNumber: phone,
+              payerName: payerName || "Customer",
+              payerEmail: payerEmail || undefined,
+              returnUrl,
+            }),
+      }
+      );
+
+      // Backward compatibility: if the new subscriptions endpoint is unavailable,
+      // fall back to payment-link initiation using selected package + authenticated payer details.
+      if (authenticatedCheckout && res.status === 404) {
+        res = await startPaymentViaLinkFallback({
           planId: plan.id,
           channelName: channel,
           phoneNumber: phone,
           payerName: payerName || "Customer",
           payerEmail: payerEmail || undefined,
           returnUrl,
-        }),
-      });
+        });
+      }
 
       const data = await res.json().catch(() => ({}));
+
+      if (res.status === 401 && authenticatedCheckout) {
+        try {
+          localStorage.setItem("pending_plan_id", plan.id);
+        } catch {
+          // ignore
+        }
+        setError("Your session expired. Please sign in again to continue checkout.");
+        setProcessing(false);
+        return;
+      }
 
       if (!res.ok) {
         setError(data.error ?? "Payment could not be started. Please try again.");
@@ -116,7 +189,7 @@ export default function PaymentDialog({
         return;
       }
 
-      const ref = data.transactionId;
+      const ref = data.payment_reference ?? data.transactionId;
       if (!ref) {
         setError("Invalid response from payment server.");
         setProcessing(false);
@@ -126,25 +199,47 @@ export default function PaymentDialog({
       setPendingPaymentRef(ref, plan.id);
       setTransactionId(ref);
 
-      if (data.cardProcessingUrl) {
-        window.location.href = data.cardProcessingUrl;
+      const cardHref = data.checkout_url ?? data.cardProcessingUrl;
+      if (typeof cardHref === "string" && cardHref.trim()) {
+        window.location.href = cardHref;
         return;
       }
 
       setWaitingConfirmation(true);
       setProcessing(false);
 
-      const maxAttempts = 60;
+      const maxAttempts = 90;
       for (let i = 0; i < maxAttempts; i++) {
         await new Promise((r) => setTimeout(r, 3000));
-        const status = await pollStatus(ref);
-        if (status === "VALID") {
+        const { txnStatus, subscriptionStatus } = await pollStatus(ref);
+
+        if (authenticatedCheckout) {
+          if (subscriptionStatus === "ACTIVE") {
+            clearPendingPaymentRef();
+            await onPaymentSuccess();
+            onClose();
+            return;
+          }
+          if (subscriptionStatus === "FAILED") {
+            setError("Payment was not completed. Please try again.");
+            setWaitingConfirmation(false);
+            return;
+          }
+          if (txnStatus === "FAILED" || txnStatus === "CANCELED") {
+            setError("Payment was not completed. Please try again.");
+            setWaitingConfirmation(false);
+            return;
+          }
+          continue;
+        }
+
+        if (txnStatus === "VALID") {
           clearPendingPaymentRef();
           await onPaymentSuccess();
           onClose();
           return;
         }
-        if (status === "FAILED" || status === "CANCELED") {
+        if (txnStatus === "FAILED" || txnStatus === "CANCELED") {
           setError("Payment was not completed. Please try again.");
           setWaitingConfirmation(false);
           return;
@@ -247,9 +342,19 @@ export default function PaymentDialog({
                 </>
               ) : (
                 <div className="mb-6 p-4 bg-amber-50 border border-amber-100 rounded-xl">
-                  <p className="text-sm font-bold text-amber-800">Confirm on your phone</p>
+                  <p className="text-sm font-bold text-amber-800">
+                    {authenticatedCheckout
+                      ? "Processing your payment…"
+                      : "Confirm on your phone"}
+                  </p>
                   <p className="text-sm text-amber-700 mt-1">
-                    Dial <span className="font-mono font-bold">182*7*1#</span> or use the UrubutoPay app to approve the payment.
+                    {authenticatedCheckout
+                      ? "We are confirming your payment with the gateway. This usually completes within a minute."
+                      : (
+                        <>
+                          Dial <span className="font-mono font-bold">182*7*1#</span> or use the UrubutoPay app to approve the payment.
+                        </>
+                      )}
                   </p>
                   {transactionId && (
                     <p className="text-xs text-slate-500 mt-2">Ref: {transactionId}</p>
@@ -258,7 +363,9 @@ export default function PaymentDialog({
               )}
 
               <p className="text-xs text-slate-500 mb-4">
-                By completing payment, your account will be created and you will get access according to your chosen package.
+                {authenticatedCheckout
+                  ? "After the gateway confirms payment, your subscription is activated automatically—no need to trust this page alone."
+                  : "By completing payment, you will get access according to your chosen package once the payment is confirmed."}
               </p>
 
               {error && (

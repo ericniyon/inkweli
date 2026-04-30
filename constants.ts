@@ -1,6 +1,9 @@
 
 import { SubscriptionTier, Article, Category, User, UserRole } from './types';
 
+/** Chosen plan persisted across auth for login-first checkout (localStorage). */
+export const PENDING_PLAN_STORAGE_KEY = 'pending_plan_id';
+
 /** Fallback for img src to avoid empty string (browser re-download warning). */
 export const PLACEHOLDER_IMAGE =
   'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"%3E%3Crect fill="%23e2e8f0" width="40" height="40"/%3E%3C/svg%3E';

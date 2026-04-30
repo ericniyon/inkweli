@@ -61,6 +61,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data?.id && data?.email && data?.name) {
           setUserState(data);
           setStoredUser(data);
+          return;
+        }
+        if (data?.user === null) {
+          setUserState(GUEST_USER);
+          setStoredUser(null);
         }
       })
       .catch(() => {});

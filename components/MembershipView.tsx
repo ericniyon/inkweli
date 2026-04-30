@@ -2,19 +2,6 @@ import React from "react";
 import type { SubscriptionTier } from "@prisma/client";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlanConfig } from "@/constants";
 
-/** Build payment link from .env (same source as API). Falls back to plan.paymentUrl when env not set. */
-function getPaymentUrl(planId: string, fallback: string): string {
-  const base = typeof process !== "undefined" && process.env.NEXT_PUBLIC_URUBUTOPAY_BASE_URL?.replace(/\/$/, "");
-  const code =
-    planId === "plan_annual"
-      ? (typeof process !== "undefined" && process.env.NEXT_PUBLIC_URUBUTOPAY_SERVICE_CODE_ANNUAL) || null
-      : planId === "plan_per_article"
-        ? (typeof process !== "undefined" && process.env.NEXT_PUBLIC_URUBUTOPAY_SERVICE_CODE_PER_ARTICLE) || null
-        : null;
-  if (base && code) return `${base}/pwl/${code}`;
-  return fallback;
-}
-
 interface MembershipViewProps {
   onGetStarted: (planId?: string) => void;
   /** When true, "Get started" opens the payment dialog instead of the plan's payment link (e.g. after register step). */
@@ -138,11 +125,13 @@ const MembershipView: React.FC<MembershipViewProps> = ({
                         Get started
                       </button>
                     ) : (
-                      <a
-                        href={isCurrent ? undefined : getPaymentUrl(plan.id, plan.paymentUrl)}
-                        target={isCurrent ? undefined : "_blank"}
-                        rel={isCurrent ? undefined : "noopener noreferrer"}
-                        className={`mt-10 w-full py-4 rounded-xl font-charter text-base font-bold transition text-center block ${
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!isCurrent) onGetStarted(plan.id);
+                        }}
+                        disabled={isCurrent}
+                        className={`mt-10 w-full py-4 rounded-xl font-charter text-base font-bold transition text-center ${
                           isCurrent
                             ? isAnnual
                               ? "bg-emerald-500 text-slate-900 cursor-default"
@@ -150,14 +139,14 @@ const MembershipView: React.FC<MembershipViewProps> = ({
                             : isAnnual
                               ? "bg-amber-400 text-slate-900 hover:bg-amber-300"
                               : "bg-slate-900 text-white hover:bg-slate-800"
-                        } ${isCurrent ? "pointer-events-none" : ""}`}
+                        } ${isCurrent ? "pointer-events-none opacity-90" : ""}`}
                       >
                         {isLoggedIn
                           ? isCurrent
                             ? "Current plan"
-                            : "Upgrade"
-                          : "Get started"}
-                      </a>
+                            : "Subscribe"
+                          : "Subscribe"}
+                      </button>
                     )}
                   </div>
                 </article>
