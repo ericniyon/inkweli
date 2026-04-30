@@ -21,6 +21,10 @@ export const GUEST_USER: User = {
   articlesViewedThisMonth: []
 };
 
+/** Live UrubutuPay initiate API (always this URL — do not build from URUBUTOPAY_BASE_URL). */
+export const URUBUTO_INITIATE_LINK_PAYMENT_URL =
+  "https://urubutopay.rw/api/payment/initiate-link-payment" as const;
+
 /** UrubutoPay payment links (production PWL fallbacks when env/build has no NEXT_PUBLIC_*). */
 export const URUBUTOPAY_LINKS = {
   annual: 'https://urubutopay.rw/pwl/annual-package-1777494294743',

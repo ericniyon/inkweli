@@ -1,4 +1,5 @@
 {
   "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/api/urubutopay/initiate/route": "app/api/urubutopay/initiate/route.js",
   "/(marketing)/membership/page": "app/(marketing)/membership/page.js"
 }

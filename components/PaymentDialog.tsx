@@ -21,7 +21,7 @@ interface PaymentDialogProps {
   /** Optional: when provided, use these instead of pending registration data */
   payerNameOverride?: string;
   payerEmailOverride?: string;
-  /** Logged-in checkout: POST /api/subscriptions/initiate (pending subscription + user-linked txn). */
+  /** Logged-in upgrade: POST /api/urubutopay/initiate with plan_id (pending subscription + gateway). */
   authenticatedCheckout?: boolean;
 }
 
@@ -49,52 +49,6 @@ export function getPendingPaymentRef(): { reference: string; planId: string } | 
 }
 
 type Channel = "MOMO" | "AIRTEL_MONEY" | "CARD";
-
-async function startPaymentViaLinkFallback(args: {
-  planId: string;
-  channelName: Channel;
-  phoneNumber: string;
-  payerName: string;
-  payerEmail?: string;
-  returnUrl: string;
-}) {
-  return fetch("/api/payment/initiate-link-payment", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({
-      planId: args.planId,
-      channelName: args.channelName,
-      phoneNumber: args.phoneNumber,
-      payerName: args.payerName,
-      payerEmail: args.payerEmail || undefined,
-      returnUrl: args.returnUrl,
-    }),
-  });
-}
-
-async function startPaymentViaCanonicalFallback(args: {
-  planId: string;
-  channelName: Channel;
-  phoneNumber: string;
-  payerName: string;
-  payerEmail?: string;
-  returnUrl: string;
-}) {
-  return fetch("/api/urubutopay/initiate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({
-      planId: args.planId,
-      channelName: args.channelName,
-      phoneNumber: args.phoneNumber,
-      payerName: args.payerName,
-      payerEmail: args.payerEmail || undefined,
-      returnUrl: args.returnUrl,
-    }),
-  });
-}
 
 export default function PaymentDialog({
   isOpen,
@@ -154,55 +108,34 @@ export default function PaymentDialog({
       const appUrl = typeof window !== "undefined" ? window.location.origin : "";
       const returnUrl = `${appUrl}/membership/success`;
 
-      let res = await fetch(
-        authenticatedCheckout ? "/api/subscriptions/initiate" : "/api/urubutopay/initiate",
-        {
+      const initiateBody = authenticatedCheckout
+        ? {
+            plan_id: plan.id,
+            channelName: channel,
+            phoneNumber: phone,
+            payerName: payerName || "Customer",
+            payerEmail: payerEmail || undefined,
+            returnUrl,
+          }
+        : {
+            planId: plan.id,
+            channelName: channel,
+            phoneNumber: phone,
+            payerName: payerName || "Customer",
+            payerEmail: payerEmail || undefined,
+            returnUrl,
+          };
+
+      const initiateApiUrl = appUrl
+        ? `${appUrl}/api/urubutopay/initiate`
+        : "/api/urubutopay/initiate";
+
+      const res = await fetch(initiateApiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: authenticatedCheckout
-          ? JSON.stringify({
-              plan_id: plan.id,
-              channelName: channel,
-              phoneNumber: phone,
-              payerName: payerName || "Customer",
-              payerEmail: payerEmail || undefined,
-              returnUrl,
-            })
-          : JSON.stringify({
-              planId: plan.id,
-              channelName: channel,
-              phoneNumber: phone,
-              payerName: payerName || "Customer",
-              payerEmail: payerEmail || undefined,
-              returnUrl,
-            }),
-      }
-      );
-
-      // Backward compatibility: if the subscriptions endpoint is unavailable,
-      // try canonical UrubutoPay initiate and finally link-initiation alias.
-      if (authenticatedCheckout && res.status === 404) {
-        res = await startPaymentViaCanonicalFallback({
-          planId: plan.id,
-          channelName: channel,
-          phoneNumber: phone,
-          payerName: payerName || "Customer",
-          payerEmail: payerEmail || undefined,
-          returnUrl,
-        });
-      }
-
-      if (authenticatedCheckout && res.status === 404) {
-        res = await startPaymentViaLinkFallback({
-          planId: plan.id,
-          channelName: channel,
-          phoneNumber: phone,
-          payerName: payerName || "Customer",
-          payerEmail: payerEmail || undefined,
-          returnUrl,
-        });
-      }
+        body: JSON.stringify(initiateBody),
+      });
 
       const data = await res.json().catch(() => ({}));
 
