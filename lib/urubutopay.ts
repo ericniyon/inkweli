@@ -98,11 +98,13 @@ export interface InitiatePaymentResponse {
   };
 }
 
+const INITIATE_LINK_PAYMENT_URL =
+  "https://urubutopay.rw/api/payment/initiate-link-payment";
+
 export async function initiatePayment(
   params: InitiatePaymentParams
 ): Promise<InitiatePaymentResponse> {
-  const base = getBaseUrl();
-  const url = `${base}/api/payment/initiate-link-payment`;
+  const url = INITIATE_LINK_PAYMENT_URL;
   const res = await fetch(url, {
     method: "POST",
     headers: {
