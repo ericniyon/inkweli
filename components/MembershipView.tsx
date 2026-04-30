@@ -139,15 +139,9 @@ const MembershipView: React.FC<MembershipViewProps> = ({
                       </button>
                     ) : (
                       <a
-                        href={isLoggedIn ? undefined : getPaymentUrl(plan.id, plan.paymentUrl)}
-                        onClick={(e) => {
-                          if (isLoggedIn) {
-                            e.preventDefault();
-                            if (!isCurrent) onGetStarted(plan.id);
-                          }
-                        }}
-                        target={isLoggedIn ? undefined : "_blank"}
-                        rel={isLoggedIn ? undefined : "noopener noreferrer"}
+                        href={isCurrent ? undefined : getPaymentUrl(plan.id, plan.paymentUrl)}
+                        target={isCurrent ? undefined : "_blank"}
+                        rel={isCurrent ? undefined : "noopener noreferrer"}
                         className={`mt-10 w-full py-4 rounded-xl font-charter text-base font-bold transition text-center block ${
                           isCurrent
                             ? isAnnual

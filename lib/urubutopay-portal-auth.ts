@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import * as jose from "jose";
+import { logUrubutuPayEvent } from "@/lib/urubutopay-debug-log";
 
 /**
  * UrubutoPay portal calls POST with { user_name, password } to obtain a Bearer token
@@ -16,18 +17,22 @@ export async function handleUrubutoPayPortalAuth(request: Request): Promise<Resp
     const secret = process.env.URUBUTOPAY_WEBHOOK_JWT_SECRET;
 
     if (!expectedUser || !expectedPassword || !secret) {
-      console.warn("[webhooks/urubutopay/auth] Missing URUBUTOPAY_WEBHOOK_AUTH_* or JWT secret");
+      console.warn(
+        "[webhooks/urubutopay/auth] Misconfigured: set URUBUTOPAY_WEBHOOK_AUTH_USER, URUBUTOPAY_WEBHOOK_AUTH_PASSWORD, URUBUTOPAY_WEBHOOK_JWT_SECRET"
+      );
+      logUrubutuPayEvent("webhook_auth", "misconfigured", {});
       return NextResponse.json(
         {
           timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
-          message: "Invalid credentials",
-          status: 401,
+          message: "Webhook auth is not configured",
+          status: 503,
         },
-        { status: 401 }
+        { status: 503 }
       );
     }
 
     if (user_name !== expectedUser || password !== expectedPassword) {
+      logUrubutuPayEvent("webhook_auth", "invalid_credentials", {});
       return NextResponse.json(
         {
           timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
@@ -46,6 +51,10 @@ export async function handleUrubutoPayPortalAuth(request: Request): Promise<Resp
       .sign(secretBytes);
 
     const token = `Bearer ${jwt}`;
+    logUrubutuPayEvent("webhook_auth", "token_issued", {
+      user_hint:
+        expectedUser.length >= 2 ? `${expectedUser.slice(0, 2)}***` : "***",
+    });
     return NextResponse.json({
       timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
       message: "Successful",
