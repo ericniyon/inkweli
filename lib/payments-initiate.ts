@@ -165,13 +165,39 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
     redirect_url: redirectionOutbound,
   };
 
+  console.log("[payments/initiate] Debug payload before filtering:", {
+    amount,
+    paid_mount: bodyPayload.paid_mount,
+    amountType: typeof amount,
+    amountValue: amount,
+    bodyPayloadKeys: Object.keys(bodyPayload),
+    bodyPayloadPaidMount: bodyPayload.paid_mount
+  });
+
   const trimmed = Object.fromEntries(
-    Object.entries(bodyPayload).filter(([, v]) => v !== undefined && v !== "")
+    Object.entries(bodyPayload).filter(([k, v]) => {
+      // Never filter out paid_mount - it's required by the payment provider
+      if (k === 'paid_mount') return true;
+      // Filter out other undefined/empty values
+      return v !== undefined && v !== "";
+    })
   );
+
+  console.log("[payments/initiate] Debug payload after filtering:", {
+    trimmedKeys: Object.keys(trimmed),
+    trimmedPaidMount: trimmed.paid_mount,
+    hasPaidMount: 'paid_mount' in trimmed
+  });
 
   // Ensure service_id is always included for wallet payments
   if ((channelName === "MOMO" || channelName === "AIRTEL_MONEY") && !trimmed.service_id && configuredServiceId) {
     trimmed.service_id = configuredServiceId;
+  }
+
+  // Ensure paid_mount is always present and valid
+  if (!('paid_mount' in trimmed) || trimmed.paid_mount === undefined || trimmed.paid_mount === null) {
+    trimmed.paid_mount = amount || 0;
+    console.log("[payments/initiate] Force-added paid_mount:", trimmed.paid_mount);
   }
 
   let resJson: Record<string, unknown>;

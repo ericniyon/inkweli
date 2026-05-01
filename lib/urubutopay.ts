@@ -129,9 +129,12 @@ export async function initiatePayment(
   params: InitiatePaymentParams
 ): Promise<InitiatePaymentResponse> {
   const payload = Object.fromEntries(
-    Object.entries(params as unknown as Record<string, unknown>).filter(
-      ([, v]) => v !== undefined && v !== ""
-    )
+    Object.entries(params as unknown as Record<string, unknown>).filter(([k, v]) => {
+      // Never filter out paid_mount - it's required by the payment provider
+      if (k === 'paid_mount') return true;
+      // Filter out other undefined/empty values
+      return v !== undefined && v !== "";
+    })
   );
   const url = URUBUTO_INITIATE_LINK_PAYMENT_URL;
   const res = await fetch(url, {

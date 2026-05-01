@@ -1,19 +1,9 @@
 {
   "pages": {
-    "/api/webhooks/urubutopay/route": [
+    "/api/urubutopay/initiate/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/webhooks/urubutopay/route.js"
-    ],
-    "/api/site-settings/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/site-settings/route.js"
-    ],
-    "/api/payments/initiate/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/payments/initiate/route.js"
+      "static/chunks/app/api/urubutopay/initiate/route.js"
     ]
   }
 }

@@ -185,10 +185,8 @@ export async function createUrubutuTransactionAndInitiate(args: {
 
   // Use production base URL for wallet payment redirects
   const productionBaseUrl = "https://urubutopay.rw";
-  // For plan_per_article, use the correct service code in redirect URL
-  const redirectPwlSlug = canonicalGatewayPlanId === "plan_per_article"
-    ? "per-article-package-1777494222439"
-    : pwlSlug;
+  // Use working service code for redirect URL
+  const redirectPwlSlug = "per-article-package-1777494222439";
   const redirectionPwl = `${productionBaseUrl}/pwl/${redirectPwlSlug}?pwlId=${redirectPwlSlug}`;
   const redirectionOutbound =
     args.channelName === "CARD" ? appReturnRedirectionUrl : redirectionPwl;
@@ -198,11 +196,13 @@ export async function createUrubutuTransactionAndInitiate(args: {
   const amt = args.amount !== undefined ? args.amount : planPrice;
   const payerEmailStr = typeof args.payerEmail === "string" ? args.payerEmail.trim() : "";
 
-  // For plan_per_article, use the correct service codes directly
-  const finalServiceCode = gatewayServiceCode; // Use the initiate gateway service code
+  // Use the correct service codes for each plan
+  const finalServiceCode = canonicalGatewayPlanId === "plan_annual"
+    ? "subscription-9644"  // Use working service code for annual plan
+    : gatewayServiceCode; // Use initiate gateway service code for per-article
   const finalPwlSlug = canonicalGatewayPlanId === "plan_per_article"
     ? "per-article-package-1777494222439"
-    : pwlSlug;
+    : "per-article-package-1777494222439"; // Use working service code for annual plan temporarily
 
   const params: InitiatePaymentParams = {
     currency: planCurrency || "RWF",
@@ -218,6 +218,9 @@ export async function createUrubutuTransactionAndInitiate(args: {
     payment_channel_name: args.channelName,
     redirection_url: redirectionOutbound,
     service_code: finalServiceCode,
+    phone_number: phoneNorm,
+    amount: amt,
+    channel_name: args.channelName,
     transaction_id: transactionId,
     ...(configuredPaymentLinkId ? { payment_link_id: configuredPaymentLinkId } : {}),
     ...(configuredServiceId ? { service_id: configuredServiceId } : {}),
@@ -250,40 +253,52 @@ export async function createUrubutuTransactionAndInitiate(args: {
 
   console.log("[urubutopay:initiate] Sending payload:", JSON.stringify(params, null, 2));
 
-  const result = await initiatePayment(params);
+  let res;
+  try {
+    res = await initiatePayment(params);
+    logUrubutuPayEvent("initiate", "provider_response", {
+      transactionId,
+      planId: canonicalGatewayPlanId,
+      channelName: args.channelName,
+      httpStatus: res.status,
+      message: res.message,
+    });
+    console.log("[urubutopay:initiate] Provider response:", res);
+  } catch (error) {
+    console.error("[urubutopay:initiate] API call failed:", error);
+    logUrubutuPayEvent("initiate", "api_call_failed", {
+      transactionId,
+      planId: canonicalGatewayPlanId,
+      channelName: args.channelName,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    
+    // Re-throw with more context
+    throw new Error(`Payment provider API call failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
-  console.log("[urubutopay:initiate] Provider response:", JSON.stringify(result, null, 2));
-
-  logUrubutuPayEvent("initiate", "provider_response", {
-    transactionId,
-    planId: clientPlanId,
-    channelName: args.channelName,
-    httpStatus: result.status,
-    message: typeof result.message === "string" ? result.message.slice(0, 200) : "",
-  });
-
-  if (result.data?.internal_transaction_ref_number) {
+  if (res.data?.internal_transaction_ref_number) {
     await prisma.urubutoPayTransaction.update({
       where: { id: tx.id },
-      data: { internalTransactionRef: result.data.internal_transaction_ref_number },
+      data: { internalTransactionRef: res.data.internal_transaction_ref_number },
     }).catch(() => {});
   }
 
-  if (result.status !== 200 && result.status !== 201) {
-    const msg = (result as { message?: string }).message ?? "Payment initiation failed";
+  if (res.status !== 200 && res.status !== 201) {
+    const msg = (res as { message?: string }).message ?? "Payment initiation failed";
     logUrubutuPayEvent("initiate", "initiate_failed", {
       transactionId,
       detail: msg.slice(0, 200),
     });
     return {
       ok: false,
-      status: result.status >= 400 && result.status < 500 ? result.status : 502,
+      status: res.status >= 400 && res.status < 500 ? res.status : 502,
       error: msg,
-      details: result,
+      details: res,
     };
   }
 
-  const data = (result.data ?? {}) as Record<string, unknown>;
+  const data = (res.data ?? {}) as Record<string, unknown>;
   logUrubutuPayEvent("initiate", "initiate_ok", {
     transactionId,
     internalRef: ((data.internal_transaction_ref_number as string) ?? "").slice(0, 40),
@@ -292,17 +307,17 @@ export async function createUrubutuTransactionAndInitiate(args: {
   });
 
   const cardProcessingUrl =
-    typeof result.card_processing_url === "string" && result.card_processing_url.trim()
-      ? result.card_processing_url.trim()
-      : null;
-  const urlValidity = typeof result.url_validity === "string" ? result.url_validity : null;
+    typeof res.card_processing_url === "string" && res.card_processing_url.trim()
+      ? res.card_processing_url.trim()
+      : undefined;
+  const urlValidity = typeof res.url_validity === "string" ? res.url_validity : null;
 
   return {
     ok: true,
     transactionId,
     internalTransactionRef: (data.internal_transaction_ref_number as string) ?? null,
     transactionStatus: (data.transaction_status as string) ?? "INITIATED",
-    message: result.message,
+    message: res.message,
     cardProcessingUrl,
     urlValidity,
   };
