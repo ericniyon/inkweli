@@ -309,7 +309,7 @@ export async function createUrubutuTransactionAndInitiate(args: {
   const cardProcessingUrl =
     typeof res.card_processing_url === "string" && res.card_processing_url.trim()
       ? res.card_processing_url.trim()
-      : undefined;
+      : null;
   const urlValidity = typeof res.url_validity === "string" ? res.url_validity : null;
 
   return {
