@@ -1,3 +1,5 @@
 {
-  "/api/urubutopay/initiate/route": "app/api/urubutopay/initiate/route.js"
+  "/api/site-settings/route": "app/api/site-settings/route.js",
+  "/page": "app/page.js",
+  "/(marketing)/membership/page": "app/(marketing)/membership/page.js"
 }
