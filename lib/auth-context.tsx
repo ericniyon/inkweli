@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { signOut } from "next-auth/react";
 import { User } from "@/types";
 import { GUEST_USER } from "@/constants";
 
@@ -81,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     setUserState(GUEST_USER);
     setStoredUser(null);
+    void signOut({ redirect: false }).catch(() => {});
   }, []);
 
   return (
