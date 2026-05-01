@@ -29,7 +29,7 @@ export default function PaymentStatusTracker({
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const checkPaymentStatusWithEvents = useCallback(async (transactionId: string) => {
+  const checkPaymentStatusWithEvents = useCallback((transactionId: string) => {
     try {
       const eventSource = new EventSource(`/api/payments/events?transactionId=${encodeURIComponent(transactionId)}`);
       
@@ -105,6 +105,7 @@ export default function PaymentStatusTracker({
         isError: true,
         message: "Unable to connect to payment server",
       }));
+      return null;
     }
   }, [onPaymentComplete]);
 

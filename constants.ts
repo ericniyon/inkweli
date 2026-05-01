@@ -49,7 +49,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlanConfig[] = [
     id: 'plan_annual',
     tier: SubscriptionTier.UNLIMITED,
     name: 'Annual Package',
-    price: 50000,
+    price: 20000,
     currency: 'RWF',
     interval: 'year',
     paymentUrl: URUBUTOPAY_LINKS.annual,

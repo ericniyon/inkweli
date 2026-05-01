@@ -1,1 +1,3 @@
-{}
+{
+  "/api/urubutopay/initiate/route": "app/api/urubutopay/initiate/route.js"
+}
