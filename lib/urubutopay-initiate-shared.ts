@@ -135,6 +135,8 @@ export async function createUrubutuTransactionAndInitiate(args: {
   userId?: string | null;
   /** When set, must match pending subscription payment_reference */
   preassignedTransactionId?: string | null;
+  /** Custom amount for the payment (overrides plan price) */
+  amount?: number;
 }): Promise<InitiateUrubutuResult> {
   const apiKey = getApiKey();
   const merchantCode = getMerchantCode();
@@ -173,14 +175,34 @@ export async function createUrubutuTransactionAndInitiate(args: {
       ? process.env.URUBUTOPAY_SERVICE_ID_ANNUAL?.trim()
       : process.env.URUBUTOPAY_SERVICE_ID_PER_ARTICLE?.trim();
 
-  const pwlRedirectBase = getBaseUrl();
-  const redirectionPwl = `${pwlRedirectBase}/pwl/${pwlSlug}?pwlId=${pwlSlug}`;
+  console.log("[urubutopay:initiate] Debug config:", {
+    canonicalGatewayPlanId,
+    configuredPaymentLinkId,
+    configuredServiceId,
+    envServiceIdPerArticle: process.env.URUBUTOPAY_SERVICE_ID_PER_ARTICLE?.trim(),
+    envPaymentLinkIdPerArticle: process.env.URUBUTOPAY_PAYMENT_LINK_ID_PER_ARTICLE?.trim()
+  });
+
+  // Use production base URL for wallet payment redirects
+  const productionBaseUrl = "https://urubutopay.rw";
+  // For plan_per_article, use the correct service code in redirect URL
+  const redirectPwlSlug = canonicalGatewayPlanId === "plan_per_article"
+    ? "per-article-package-1777494222439"
+    : pwlSlug;
+  const redirectionPwl = `${productionBaseUrl}/pwl/${redirectPwlSlug}?pwlId=${redirectPwlSlug}`;
   const redirectionOutbound =
     args.channelName === "CARD" ? appReturnRedirectionUrl : redirectionPwl;
 
   const phoneNorm = normalizeRwPayerPhone(args.phoneNumber);
-  const amt = planPrice;
+  // For plan_per_article, use custom amount if provided, otherwise use plan price
+  const amt = args.amount !== undefined ? args.amount : planPrice;
   const payerEmailStr = typeof args.payerEmail === "string" ? args.payerEmail.trim() : "";
+
+  // For plan_per_article, use the correct service codes directly
+  const finalServiceCode = gatewayServiceCode; // Use the initiate gateway service code
+  const finalPwlSlug = canonicalGatewayPlanId === "plan_per_article"
+    ? "per-article-package-1777494222439"
+    : pwlSlug;
 
   const params: InitiatePaymentParams = {
     currency: planCurrency || "RWF",
@@ -191,14 +213,11 @@ export async function createUrubutuTransactionAndInitiate(args: {
     payer_names: args.payerName.trim(),
     payer_phone_number: phoneNorm,
     payer_to_be_charged: "YES",
-    paymentLinkId: pwlSlug,
+    paymentLinkId: finalPwlSlug,
     payment_channel: paymentChannel,
     payment_channel_name: args.channelName,
     redirection_url: redirectionOutbound,
-    service_code: gatewayServiceCode,
-    phone_number: phoneNorm,
-    amount: amt,
-    channel_name: args.channelName,
+    service_code: finalServiceCode,
     transaction_id: transactionId,
     ...(configuredPaymentLinkId ? { payment_link_id: configuredPaymentLinkId } : {}),
     ...(configuredServiceId ? { service_id: configuredServiceId } : {}),
@@ -229,7 +248,11 @@ export async function createUrubutuTransactionAndInitiate(args: {
     url: URUBUTO_INITIATE_LINK_PAYMENT_URL,
   });
 
+  console.log("[urubutopay:initiate] Sending payload:", JSON.stringify(params, null, 2));
+
   const result = await initiatePayment(params);
+
+  console.log("[urubutopay:initiate] Provider response:", JSON.stringify(result, null, 2));
 
   logUrubutuPayEvent("initiate", "provider_response", {
     transactionId,

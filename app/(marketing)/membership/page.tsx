@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { SUBSCRIPTION_PLANS, PENDING_PLAN_STORAGE_KEY, type SubscriptionPlanConfig } from "@/constants";
 import MembershipView from "@/components/MembershipView";
 import PaymentDialog, { type PlanForPayment } from "@/components/PaymentDialog";
+import PaymentStatusTracker from "@/components/PaymentStatusTracker";
 
 function MembershipPageInner() {
   const router = useRouter();
@@ -163,6 +164,18 @@ function MembershipPageInner() {
     setPaymentDialogOpen(true);
   }, [hydrated, isGuest, plans, router, searchParams]);
 
+  const handlePaymentComplete = useCallback(async (status: any) => {
+    // Refresh user data to get updated tier
+    await refreshUserFromSession();
+    
+    // If payment was successful, redirect to dashboard
+    if (status.isSuccess) {
+      setTimeout(() => {
+        router.push("/dashboard");
+      }, 2000);
+    }
+  }, [refreshUserFromSession, router]);
+
   const onPaymentSuccess = mode === "upgrade" ? upgradeAfterPayment : completeRegistrationAfterPayment;
 
   return (
@@ -187,6 +200,9 @@ function MembershipPageInner() {
         payerEmailOverride={!isGuest ? user.email : undefined}
         authenticatedCheckout={mode === "upgrade"}
         checkoutUserId={!isGuest && user.id !== "guest" ? user.id : null}
+      />
+      <PaymentStatusTracker
+        onPaymentComplete={handlePaymentComplete}
       />
     </div>
   );

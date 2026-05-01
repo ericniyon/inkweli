@@ -438,10 +438,12 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
         select: { email: true },
       });
 
-      logUrubutuPayEvent("webhook", "payment_success_tier_by_tx_user_id", {
+      logUrubutuPayEvent("webhook", "payment_success_tier_applied", {
         ref,
         tier,
         email: maskEmail(linked?.email ?? undefined),
+        transactionStatus,
+        callbackType,
       });
 
       const responseEmail =
