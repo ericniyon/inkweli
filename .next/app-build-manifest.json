@@ -1,25 +1,30 @@
 {
   "pages": {
-    "/api/urubutopay/initiate/route": [
+    "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/urubutopay/initiate/route.js"
+      "static/css/app/layout.css",
+      "static/chunks/app/layout.js"
+    ],
+    "/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/page.js"
     ],
     "/api/site-settings/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/site-settings/route.js"
     ],
-    "/api/payments/initiate/route": [
+    "/api/auth/[...nextauth]/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/payments/initiate/route.js"
+      "static/chunks/app/api/auth/[...nextauth]/route.js"
     ],
-    "/layout": [
+    "/api/auth/me/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/css/app/layout.css",
-      "static/chunks/app/layout.js"
+      "static/chunks/app/api/auth/me/route.js"
     ],
     "/(marketing)/layout": [
       "static/chunks/webpack.js",
@@ -31,25 +36,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/(marketing)/membership/page.js"
     ],
-    "/api/auth/[...nextauth]/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/auth/[...nextauth]/route.js"
-    ],
     "/api/subscription-plans/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/subscription-plans/route.js"
     ],
-    "/api/auth/me/route": [
+    "/detail/[id]/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/auth/me/route.js"
-    ],
-    "/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
+      "static/chunks/app/detail/[id]/page.js"
     ]
   }
 }

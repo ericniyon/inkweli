@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/lib/auth";
 
 const articleInclude = {
   author: {
@@ -26,6 +28,12 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = session.userId;
+
     const { slug: slugOrId } = await params;
     let article = await prisma.article.findFirst({
       where: { slug: slugOrId },
@@ -40,6 +48,24 @@ export async function GET(
     if (!article) {
       return NextResponse.json({ error: "Article not found" }, { status: 404 });
     }
+
+    let hasClapped = false;
+    if (userId && userId !== "guest") {
+      try {
+        const clap = await prisma.clap.findUnique({
+          where: {
+            userId_articleId: {
+              userId,
+              articleId: article.id,
+            },
+          },
+        });
+        hasClapped = !!clap;
+      } catch {
+        hasClapped = false;
+      }
+    }
+
     return NextResponse.json({
       id: article.id,
       title: article.title,
@@ -55,6 +81,7 @@ export async function GET(
       readingTime: article.readingTime,
       category: article.category,
       claps: article.claps,
+      hasClapped,
       tags: article.tags,
       responses: article.responses.map((r) => ({
         id: r.id,

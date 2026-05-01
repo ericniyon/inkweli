@@ -223,6 +223,7 @@ export async function createUrubutuTransactionAndInitiate(args: {
     payer_names: args.payerName.trim(),
     payer_phone_number: phoneNorm,
     payer_to_be_charged: "YES",
+    paymentLinkId: finalPwlSlug,
     payment_channel: paymentChannel,
     payment_channel_name: args.channelName,
     redirection_url: redirectionOutbound,

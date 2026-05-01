@@ -25,10 +25,10 @@ export default function ArticleDetailClient({
   const { user, setUser, isGuest } = useAuth();
   const [article, setArticle] = useState<Article>(initialArticle);
 
-  // When user is logged in, refetch article to get correct hasClapped (server didn't have userId)
+  // Refetch so hasClapped and any server-only fields stay in sync (GET requires session cookie)
   useEffect(() => {
     if (isGuest || user.id === "guest") return;
-    fetch(`/api/articles/${initialArticle.id}?userId=${user.id}`)
+    fetch(`/api/articles/${initialArticle.id}`, { credentials: "include" })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => data && setArticle(data))
       .catch(() => {});
