@@ -2,6 +2,14 @@
 
 import React from "react";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
+import {
+  BarChart2,
+  Bookmark,
+  Home,
+  LayoutList,
+  UserRound,
+} from "lucide-react";
 
 interface Writer {
   id: string;
@@ -13,54 +21,66 @@ interface DetailSidebarProps {
   writers: Writer[];
 }
 
-const NavItem: React.FC<{
-  icon: React.ReactNode;
+type NavDef = {
   label: string;
   href: string;
-}> = ({ icon, label, href }) => (
-  <Link
-    href={href}
-    className="flex items-center gap-3 py-3 px-4 w-full text-slate-600 hover:text-slate-900 hover:bg-slate-50/80 transition-colors rounded-lg"
-  >
-    <span className="shrink-0 [&>svg]:w-5 [&>svg]:h-5 text-slate-500">{icon}</span>
-    <span className="text-sm font-medium">{label}</span>
-  </Link>
-);
+  /** match dashboard ?view= for active state */
+  dashboardView?: "home" | "library" | "stories" | "stats" | "profile";
+  Icon: typeof Home;
+};
 
-const HouseIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-  </svg>
-);
-const BookmarkIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-  </svg>
-);
-const ListIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-  </svg>
-);
-const ChartIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeWidth="2" d="M7 12l3-3 3 3 4-8M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-  </svg>
-);
-const UserIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-  </svg>
-);
-export default function DetailSidebar({ writers }: DetailSidebarProps) {
+const NAV_ITEMS: NavDef[] = [
+  { label: "Home", href: "/", Icon: Home },
+  { label: "Library", href: "/dashboard?view=library", dashboardView: "library", Icon: Bookmark },
+  { label: "Stories", href: "/dashboard?view=stories", dashboardView: "stories", Icon: LayoutList },
+  { label: "Stats", href: "/dashboard?view=stats", dashboardView: "stats", Icon: BarChart2 },
+  { label: "Profile", href: "/dashboard?view=profile", dashboardView: "profile", Icon: UserRound },
+];
+
+export default function DetailSidebar({ writers: _writers }: DetailSidebarProps) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const dashboardView =
+    pathname.startsWith("/dashboard")
+      ? (searchParams.get("view") || "home") as NavDef["dashboardView"]
+      : null;
+
   return (
-    <aside className="w-52 border-r border-slate-100 h-screen fixed left-0 top-0 flex flex-col pt-20 pb-6 px-4 bg-white hidden md:flex z-40">
-      <nav className="flex-1 space-y-0.5">
-        <NavItem icon={<HouseIcon />} label="Home" href="/" />
-        <NavItem icon={<BookmarkIcon />} label="Library" href="/" />
-        <NavItem icon={<UserIcon />} label="Profile" href="/" />
-        <NavItem icon={<ListIcon />} label="Stories" href="/" />
-        <NavItem icon={<ChartIcon />} label="Stats" href="/" />
+    <aside className="w-56 border-r border-slate-200/80 h-screen fixed left-0 top-0 hidden md:flex z-40 flex-col bg-[#FDFCFB] pt-20 pb-6 px-3 font-charter">
+      <nav className="flex-1 space-y-1 px-1" aria-label="Site">
+        {NAV_ITEMS.map(({ label, href, dashboardView: itemView, Icon }) => {
+          const onMarketingHome = pathname === "/";
+          const onDashboard = pathname.startsWith("/dashboard");
+
+          let active = false;
+          if (href === "/") {
+            active = onMarketingHome;
+          } else if (itemView) {
+            const effective = dashboardView ?? "home";
+            active = onDashboard && effective === itemView;
+          }
+
+          return (
+            <Link
+              key={label}
+              href={href}
+              className={[
+                "flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors text-medium-meta font-semibold tracking-tight",
+                active
+                  ? "bg-slate-900 text-white shadow-md shadow-slate-900/15"
+                  : "text-slate-600 hover:bg-white hover:text-slate-900 border border-transparent hover:border-slate-200/80 hover:shadow-sm",
+              ].join(" ")}
+            >
+              <Icon
+                size={20}
+                strokeWidth={active ? 2 : 1.75}
+                className={active ? "text-white shrink-0" : "text-slate-500 shrink-0"}
+                aria-hidden
+              />
+              {label}
+            </Link>
+          );
+        })}
       </nav>
     </aside>
   );

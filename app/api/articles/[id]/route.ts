@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/lib/auth";
+import { userHasFullReadAccessToArticle } from "@/lib/article-access";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = session.userId;
+
     const { id } = await params;
-    const url = new URL(request.url);
-    const userId = url.searchParams.get("userId");
 
     const article = await prisma.article.findUnique({
       where: { id },
@@ -53,6 +60,10 @@ export async function GET(
       }
     }
 
+    const readerHasFullAccess = await userHasFullReadAccessToArticle(userId, id, {
+      articleAuthorId: article.authorId,
+    });
+
     const response = NextResponse.json({
       id: article.id,
       title: article.title,
@@ -90,6 +101,7 @@ export async function GET(
         comment: h.comment,
         createdAt: h.createdAt.toISOString(),
       })),
+      readerHasFullAccess,
     });
 
     // No cache so detail view always shows latest edited content

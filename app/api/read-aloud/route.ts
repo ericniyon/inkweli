@@ -1,16 +1,12 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Modality } from "@google/genai";
+import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/lib/auth";
+import { userHasFullReadAccessToArticle } from "@/lib/article-access";
 
-/** Get plain text for the first N paragraphs (for free listen preview). */
-function getFirstParagraphPlainText(html: string): string {
-  const regex = /<p[^>]*>([\s\S]*?)<\/p>/i;
-  const match = (html || "").match(regex);
-  if (match) {
-    return match[1].replace(/<[^>]*>?/gm, " ").replace(/\s+/g, " ").trim();
-  }
-  const plain = (html || "").replace(/<[^>]*>?/gm, " ").replace(/\s+/g, " ").trim();
-  return plain.slice(0, 500) || plain;
+function htmlToPlainText(html: string): string {
+  return (html || "").replace(/<[^>]*>?/gm, " ").replace(/\s+/g, " ").trim();
 }
 
 export async function POST(request: Request) {
@@ -23,33 +19,45 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json();
-    const { title = "", content = "", userId } = body;
-
-    let textToRead: string;
-    const fullPlainText = (content || "").replace(/<[^>]*>?/gm, " ").replace(/\s+/g, " ").trim();
-
-    if (userId && typeof userId === "string") {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { tier: true },
-      });
-      if (user?.tier === "UNLIMITED") {
-        textToRead = fullPlainText;
-      } else {
-        const firstParagraph = getFirstParagraphPlainText(content || "");
-        textToRead = firstParagraph
-          ? `${firstParagraph} To listen to the full article, become an annual subscriber.`
-          : fullPlainText.slice(0, 500);
-      }
-    } else {
-      const firstParagraph = getFirstParagraphPlainText(content || "");
-      textToRead = firstParagraph
-        ? `${firstParagraph} To listen to the full article, become an annual subscriber.`
-        : fullPlainText.slice(0, 500);
+    const session = await getServerSession(authOptions);
+    const userId = session?.userId;
+    if (!userId || userId === "guest") {
+      return NextResponse.json({ error: "Sign in is required for audio." }, { status: 401 });
     }
 
-    const prompt = `Read this article in a calm, professional tone: ${title}. ${textToRead}`;
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const articleId = typeof body.articleId === "string" ? body.articleId.trim() : "";
+    if (!articleId) {
+      return NextResponse.json({ error: "articleId is required" }, { status: 400 });
+    }
+
+    const article = await prisma.article.findUnique({
+      where: { id: articleId },
+      select: { title: true, content: true, authorId: true },
+    });
+    if (!article) {
+      return NextResponse.json({ error: "Article not found" }, { status: 404 });
+    }
+
+    const canListen = await userHasFullReadAccessToArticle(userId, articleId, {
+      articleAuthorId: article.authorId,
+    });
+    if (!canListen) {
+      return NextResponse.json(
+        {
+          error:
+            "Audio is available only with full access — annual subscribers or purchasers of this article.",
+        },
+        { status: 403 }
+      );
+    }
+
+    const textToRead = htmlToPlainText(article.content);
+    if (!textToRead) {
+      return NextResponse.json({ error: "No readable content." }, { status: 400 });
+    }
+
+    const prompt = `Read this article in a calm, professional tone: ${article.title}. ${textToRead}`;
 
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({

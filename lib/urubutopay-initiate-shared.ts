@@ -108,6 +108,18 @@ export async function resolveCheckoutPlan(planIdFromClient: string): Promise<
   };
 }
 
+/** Single-story checkout must record `article_id`. Monthly tiers (e.g. plan_novis) must not. */
+export async function checkoutPlanRequiresLinkedArticle(planId: string): Promise<boolean> {
+  const id = planId.trim();
+  if (!id) return false;
+  if (id === "plan_per_article") return true;
+  const row = await prisma.subscriptionPlan.findUnique({
+    where: { id },
+    select: { interval: true },
+  });
+  return (row?.interval ?? "").trim().toLowerCase() === "article";
+}
+
 export type InitiateUrubutuResult =
   | {
       ok: true;
@@ -137,9 +149,12 @@ export async function createUrubutuTransactionAndInitiate(args: {
   preassignedTransactionId?: string | null;
   /** Custom amount for the payment (overrides plan price) */
   amount?: number;
+  /** Article unlocked by per-article / reader checkout when applicable */
+  articleId?: string | null;
 }): Promise<InitiateUrubutuResult> {
   const apiKey = getApiKey();
   const merchantCode = getMerchantCode();
+  
   if (!apiKey || !merchantCode) {
     return { ok: false, status: 503, error: "UrubutoPay not configured (API key or merchant code)" };
   }
@@ -151,6 +166,15 @@ export async function createUrubutuTransactionAndInitiate(args: {
 
   const { canonicalGatewayPlanId, price: planPrice, currency: planCurrency, tierForTransaction, clientPlanId } =
     resolved;
+
+  // Use plan-specific merchant code if available
+  let finalMerchantCode = merchantCode;
+  if (canonicalGatewayPlanId === "plan_annual") {
+    const annualMerchantCode = process.env.URUBUTOPAY_MERCHANT_CODE_ANNUAL?.trim();
+    if (annualMerchantCode) {
+      finalMerchantCode = annualMerchantCode;
+    }
+  }
 
   const pwlSlug = getServiceCodeForPlan(canonicalGatewayPlanId);
   const gatewayServiceCode = getInitiateGatewayServiceCode(canonicalGatewayPlanId);
@@ -198,15 +222,15 @@ export async function createUrubutuTransactionAndInitiate(args: {
 
   // Use the correct service codes for each plan
   const finalServiceCode = canonicalGatewayPlanId === "plan_annual"
-    ? "subscription-9644"  // Use working service code for annual plan
+    ? "annual-package-1777494294743"  // Use verified working service code for annual plan
     : gatewayServiceCode; // Use initiate gateway service code for per-article
   const finalPwlSlug = canonicalGatewayPlanId === "plan_per_article"
-    ? "per-article-package-1777494222439"
-    : "per-article-package-1777494222439"; // Use working service code for annual plan temporarily
+    ? getServiceCodeForPlan("plan_per_article") || "per-article-package-1777494222439"
+    : "annual-package-1777494294743"; // Use verified working service code for annual plan
 
   const params: InitiatePaymentParams = {
     currency: planCurrency || "RWF",
-    merchant_code: merchantCode,
+    merchant_code: finalMerchantCode,
     paid_mount: amt,
     payer_code: transactionId,
     payer_email: payerEmailStr,
@@ -239,6 +263,7 @@ export async function createUrubutuTransactionAndInitiate(args: {
       status: "INITIATED",
       payerNames: args.payerName,
       email: args.payerEmail ?? null,
+      articleId: typeof args.articleId === "string" && args.articleId.trim() ? args.articleId.trim() : null,
     },
   }).catch(() => null);
 

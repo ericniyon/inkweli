@@ -37,6 +37,13 @@ export async function POST(request: Request) {
       );
     }
 
+    const article_id =
+      typeof body.article_id === "string" && body.article_id.trim()
+        ? body.article_id.trim()
+        : typeof body.articleId === "string" && body.articleId.trim()
+          ? body.articleId.trim()
+          : undefined;
+
     const result = await initiateSubscriptionPaymentViaGateway({
       plan_id,
       amount: typeof amount === "number" ? amount : NaN,
@@ -45,6 +52,7 @@ export async function POST(request: Request) {
       name,
       phone,
       ...(channelNameRaw !== undefined ? { channelName: channelNameRaw } : {}),
+      ...(article_id !== undefined ? { article_id } : {}),
     });
 
     if (!result.ok) {

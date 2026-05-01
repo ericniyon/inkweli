@@ -62,6 +62,56 @@ async function main() {
     update: { name: "Pro", price: 20000, tier: "TWO_ARTICLES", interval: "month", features: ["More stories per month", "Full highlighting", "Offline reading", "Support authors", "Audio read", "Article summarization"], color: "indigo" },
   });
 
+  // Paywall + checkout: IDs match `constants.ts` / Urubutu `plan_*` flows
+  await prisma.subscriptionPlan.upsert({
+    where: { id: "plan_annual" },
+    create: {
+      id: "plan_annual",
+      tier: "UNLIMITED",
+      name: "Full access",
+      price: 20000,
+      interval: "year",
+      features: [
+        "Read every article, any time, plus priority access to new series.",
+      ],
+      color: "indigo",
+    },
+    update: {
+      tier: "UNLIMITED",
+      name: "Full access",
+      price: 20000,
+      interval: "year",
+      features: [
+        "Read every article, any time, plus priority access to new series.",
+      ],
+      color: "indigo",
+    },
+  });
+  await prisma.subscriptionPlan.upsert({
+    where: { id: "plan_per_article" },
+    create: {
+      id: "plan_per_article",
+      tier: "ONE_ARTICLE",
+      name: "Just this article",
+      price: 10000,
+      interval: "article",
+      features: [
+        "Unlock this story in full, including future updates and discussion.",
+      ],
+      color: "slate",
+    },
+    update: {
+      tier: "ONE_ARTICLE",
+      name: "Just this article",
+      price: 10000,
+      interval: "article",
+      features: [
+        "Unlock this story in full, including future updates and discussion.",
+      ],
+      color: "slate",
+    },
+  });
+
   const writers = [
     {
       id: "auth_1",

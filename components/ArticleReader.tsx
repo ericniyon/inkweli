@@ -13,8 +13,104 @@ import { RelatedArticleCardCompact } from './RelatedArticleCard';
 const FREE_PREVIEW_PARAGRAPHS_MIN = 1;
 const FREE_PREVIEW_PARAGRAPHS_MAX = 2;
 
-const ANNUAL_PLAN = SUBSCRIPTION_PLANS.find((p) => p.id === 'plan_annual');
-const PER_ARTICLE_PLAN = SUBSCRIPTION_PLANS.find((p) => p.id === 'plan_per_article');
+/** Rows from GET /api/subscription-plans */
+type SubscriptionPlanApi = {
+  id: string;
+  tier: string;
+  name: string;
+  price: number;
+  interval: string;
+  features: string[];
+};
+
+type PaywallCardContent = {
+  name: string;
+  price: number;
+  intervalSuffix: string;
+  description: string;
+};
+
+function normalizeSubscriptionPlansApi(data: unknown): SubscriptionPlanApi[] {
+  if (!Array.isArray(data)) return [];
+  return data
+    .filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object')
+    .map((item) => {
+      const id = typeof item.id === 'string' ? item.id.trim() : '';
+      if (!id) return null;
+      const features = Array.isArray(item.features)
+        ? item.features.map((f) => (typeof f === 'string' ? f.trim() : '')).filter(Boolean)
+        : [];
+      const priceRaw = item.price;
+      const price =
+        typeof priceRaw === 'number' && Number.isFinite(priceRaw)
+          ? priceRaw
+          : Number.parseInt(String(priceRaw ?? ''), 10);
+      return {
+        id,
+        tier: typeof item.tier === 'string' ? item.tier.trim() : '',
+        name: typeof item.name === 'string' && item.name.trim() ? item.name.trim() : 'Package',
+        price: Number.isFinite(price) ? price : 0,
+        interval: typeof item.interval === 'string' && item.interval.trim() ? item.interval.trim() : 'article',
+        features,
+      };
+    })
+    .filter((x): x is SubscriptionPlanApi => x !== null);
+}
+
+function intervalToPaywallSuffix(interval: string): string {
+  const i = interval.trim().toLowerCase();
+  if (i === 'year' || i === 'annual' || i === 'yr') return 'year';
+  if (i === 'month' || i === 'monthly') return 'month';
+  if (i === 'article' || i === 'once' || i === 'one-shot') return 'article';
+  return interval;
+}
+
+function pickFullAccessPlan(plans: SubscriptionPlanApi[]): SubscriptionPlanApi | undefined {
+  return (
+    plans.find((p) => p.id === 'plan_annual') ??
+    plans.find((p) => p.tier === 'UNLIMITED') ??
+    plans.find((p) => intervalToPaywallSuffix(p.interval) === 'year')
+  );
+}
+
+function pickPerArticlePlan(plans: SubscriptionPlanApi[]): SubscriptionPlanApi | undefined {
+  return (
+    plans.find((p) => p.id === 'plan_per_article') ??
+    plans.find((p) => intervalToPaywallSuffix(p.interval) === 'article')
+  );
+}
+
+function planToPaywallCard(plan: SubscriptionPlanApi, fallback: PaywallCardContent): PaywallCardContent {
+  const description =
+    plan.features.length > 0 ? plan.features.join('. ') : fallback.description;
+  return {
+    name: plan.name || fallback.name,
+    price: plan.price > 0 ? plan.price : fallback.price,
+    intervalSuffix:
+      intervalToPaywallSuffix(plan.interval) ||
+      fallback.intervalSuffix,
+    description,
+  };
+}
+
+function buildPaywallFallbacks(): { fullAccess: PaywallCardContent; perArticle: PaywallCardContent } {
+  const annual = SUBSCRIPTION_PLANS.find((p) => p.id === 'plan_annual');
+  const perArt = SUBSCRIPTION_PLANS.find((p) => p.id === 'plan_per_article');
+  return {
+    fullAccess: {
+      name: 'Full access',
+      price: annual?.price ?? 50000,
+      intervalSuffix: annual ? intervalToPaywallSuffix(annual.interval) : 'year',
+      description: 'Read every article, any time, plus priority access to new series.',
+    },
+    perArticle: {
+      name: 'Just this article',
+      price: perArt?.price ?? 10000,
+      intervalSuffix: perArt ? intervalToPaywallSuffix(perArt.interval) : 'article',
+      description: 'Unlock this story in full, including future updates and discussion.',
+    },
+  };
+}
 
 /** Stable per-article value in [min, max] so different articles can show 2, 3, or 4 free paragraphs */
 function getFreePreviewParagraphCount(articleId: string): number {
@@ -94,6 +190,10 @@ interface ArticleReaderProps {
   isLimitedAccess?: boolean;
   /** Called when user taps "Read More" to go to payment packages */
   onReadMoreClick?: () => void;
+  /** Paywall secondary CTA — e.g. open per-article checkout dialog */
+  onPerArticleCheckout?: () => void;
+  /** Paywall primary for signed-in users — open annual (`plan_annual`) checkout */
+  onFullAccessCheckout?: () => void;
   /** Writers list for author bio (optional) */
   writers?: WriterItem[];
 }
@@ -140,14 +240,51 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
   onToggleFollow,
   isLimitedAccess = false,
   onReadMoreClick,
+  onPerArticleCheckout,
+  onFullAccessCheckout,
   writers = [],
 }) => {
   const isGuest = isLimitedAccess;
-  const hasFullListen = !isGuest && currentUser.tier === SubscriptionTier.UNLIMITED;
+  const viewerLoggedIn = currentUser.id !== 'guest';
+  const hasPaidFullAccess =
+    currentUser.tier === SubscriptionTier.UNLIMITED || !isLimitedAccess;
+  const showUpgradeInPaywall = viewerLoggedIn && !hasPaidFullAccess;
+  const hasFullListen = !isGuest && !isLimitedAccess;
   const author = useMemo(
     () => writers.find((w) => w.id === article.authorId),
     [writers, article.authorId]
   ); // for existing handlers that check isGuest
+  const paywallFallbacks = useMemo(() => buildPaywallFallbacks(), []);
+  const [paywallFromDb, setPaywallFromDb] = useState<{
+    fullAccess: PaywallCardContent;
+    perArticle: PaywallCardContent;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!isLimitedAccess) return;
+    let cancelled = false;
+    fetch('/api/subscription-plans')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: unknown) => {
+        if (cancelled) return;
+        const plans = normalizeSubscriptionPlansApi(data);
+        const full = pickFullAccessPlan(plans);
+        const per = pickPerArticlePlan(plans);
+        if (!full && !per) return;
+        setPaywallFromDb({
+          fullAccess: full ? planToPaywallCard(full, paywallFallbacks.fullAccess) : paywallFallbacks.fullAccess,
+          perArticle: per ? planToPaywallCard(per, paywallFallbacks.perArticle) : paywallFallbacks.perArticle,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isLimitedAccess, paywallFallbacks]);
+
+  const paywallFullCard = paywallFromDb?.fullAccess ?? paywallFallbacks.fullAccess;
+  const paywallPerArticleCard = paywallFromDb?.perArticle ?? paywallFallbacks.perArticle;
+
   const [claps, setClaps] = useState(article.claps);
   const [hasClapped, setHasClapped] = useState(article.hasClapped ?? false);
   const [progress, setProgress] = useState(0);
@@ -222,6 +359,8 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
   };
 
   const handleListen = async () => {
+    if (!hasFullListen) return;
+
     if (isAudioPlaying) {
       stopAudio();
       return;
@@ -232,11 +371,8 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
       const res = await fetch('/api/read-aloud', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: article.title,
-          content: article.content,
-          ...(isGuest ? {} : { userId: currentUser.id }),
-        }),
+        credentials: 'include',
+        body: JSON.stringify({ articleId: article.id }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || 'Failed to generate audio');
@@ -520,16 +656,18 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
                   <button type="button" onClick={onToggleBookmark} className="p-1.5 text-slate-500 hover:text-slate-900 transition" aria-label={isBookmarked ? 'Remove bookmark' : 'Bookmark'}>
                     <svg className="w-5 h-5" fill={isBookmarked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
                   </button>
+                  {hasFullListen ? (
                   <button
                     type="button"
                     onClick={handleListen}
                     disabled={isAudioLoading}
-                    title={hasFullListen ? "Listen to full article" : "Listen to first paragraph (full article for annual subscribers)"}
+                    title="Listen to full article"
                     className="p-1.5 text-slate-500 hover:text-slate-900 transition"
-                    aria-label={hasFullListen ? "Listen to full article" : "Listen to first paragraph"}
+                    aria-label="Listen to full article"
                   >
                     {isAudioLoading ? <div className="w-5 h-5 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" /> : isAudioPlaying ? <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> : <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3z"/></svg>}
                   </button>
+                  ) : null}
                   <button type="button" onClick={handleShare} className="p-1.5 text-slate-500 hover:text-slate-900 transition" aria-label="Share">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
                   </button>
@@ -628,7 +766,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
               dangerouslySetInnerHTML={{ __html: highlightedContent }}
             />
             {/* Pay-to-continue overlay: only for unpaid users (isLimitedAccess), after 1–2 free paragraphs */}
-            {isLimitedAccess && onReadMoreClick && (
+            {isLimitedAccess && (onReadMoreClick || onPerArticleCheckout) && (
               <div className="relative mt-10 pb-12 min-h-[420px] flex flex-col items-center justify-center">
                 <div
                   className="absolute inset-0 bg-gradient-to-b from-transparent via-white/90 to-white pointer-events-none"
@@ -648,52 +786,76 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
                       Unlock the rest of this story
                     </h2>
                     <p className="font-charter text-slate-600 text-base md:text-lg leading-relaxed mb-6">
-                      You&apos;ve reached the end of the free preview. Choose a pass to keep reading insightful,
-                      deeply–reported stories like this one.
+                      {showUpgradeInPaywall ? (
+                        <>
+                          You&apos;ve reached the end of the free preview. Upgrade to a full-access plan to read the
+                          rest of this story and every article on usethinkup.
+                        </>
+                      ) : (
+                        <>
+                          You&apos;ve reached the end of the free preview. Choose a pass to keep reading insightful,
+                          deeply–reported stories like this one.
+                        </>
+                      )}
                     </p>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                       <div className="rounded-2xl border border-slate-200 bg-white/80 px-5 py-4 text-left">
                         <p className="font-charter text-xs font-bold uppercase tracking-[0.2em] text-slate-500 mb-1">
-                          Full access
+                          {paywallFullCard.name}
                         </p>
                         <p className="font-charter text-base font-black text-slate-900">
-                          {ANNUAL_PLAN
-                            ? new Intl.NumberFormat('en-RW').format(ANNUAL_PLAN.price)
-                            : '50,000'}
-                          <span className="ml-1 text-xs font-bold text-slate-500">RWF / year</span>
+                          {new Intl.NumberFormat('en-RW').format(paywallFullCard.price)}
+                          <span className="ml-1 text-xs font-bold text-slate-500">
+                            RWF / {paywallFullCard.intervalSuffix}
+                          </span>
                         </p>
                         <p className="mt-2 text-sm text-slate-600 font-charter">
-                          Read every article, any time, plus priority access to new series.
+                          {paywallFullCard.description}
                         </p>
                       </div>
 
                       <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 px-5 py-4 text-left">
                         <p className="font-charter text-xs font-bold uppercase tracking-[0.2em] text-slate-500 mb-1">
-                          Just this article
+                          {paywallPerArticleCard.name}
                         </p>
                         <p className="font-charter text-base font-black text-slate-900">
-                          {PER_ARTICLE_PLAN
-                            ? new Intl.NumberFormat('en-RW').format(PER_ARTICLE_PLAN.price)
-                            : '10,000'}
-                          <span className="ml-1 text-xs font-bold text-slate-500">RWF / article</span>
+                          {new Intl.NumberFormat('en-RW').format(paywallPerArticleCard.price)}
+                          <span className="ml-1 text-xs font-bold text-slate-500">
+                            RWF / {paywallPerArticleCard.intervalSuffix}
+                          </span>
                         </p>
                         <p className="mt-2 text-sm text-slate-600 font-charter">
-                          Unlock this story in full, including future updates and discussion.
+                          {paywallPerArticleCard.description}
                         </p>
                       </div>
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                      <Link
-                        href="/membership"
-                        className="font-charter inline-flex items-center justify-center px-7 py-3.5 rounded-full bg-slate-900 text-white text-sm md:text-base font-bold hover:bg-slate-800 transition shadow-lg hover:shadow-xl"
-                      >
-                        View membership options
-                      </Link>
+                      {showUpgradeInPaywall && onFullAccessCheckout ? (
+                        <button
+                          type="button"
+                          onClick={onFullAccessCheckout}
+                          className="font-charter inline-flex items-center justify-center px-7 py-3.5 rounded-full bg-slate-900 text-white text-sm md:text-base font-bold hover:bg-slate-800 transition shadow-lg hover:shadow-xl"
+                        >
+                          Full access
+                        </button>
+                      ) : (
+                        <Link
+                          href={
+                            showUpgradeInPaywall ? '/membership?plan=plan_annual' : '/membership'
+                          }
+                          className="font-charter inline-flex items-center justify-center px-7 py-3.5 rounded-full bg-slate-900 text-white text-sm md:text-base font-bold hover:bg-slate-800 transition shadow-lg hover:shadow-xl"
+                        >
+                          {showUpgradeInPaywall ? 'Full access' : 'View membership options'}
+                        </Link>
+                      )}
                       <button
                         type="button"
-                        onClick={onReadMoreClick}
+                        onClick={() => {
+                          if (onPerArticleCheckout) onPerArticleCheckout();
+                          else onReadMoreClick?.();
+                        }}
                         className="font-charter inline-flex items-center justify-center px-6 py-3 rounded-full border border-slate-300 bg-white text-sm md:text-base font-bold text-slate-700 hover:bg-slate-50 transition"
                       >
                         Continue with this article only

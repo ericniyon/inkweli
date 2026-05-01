@@ -6,7 +6,7 @@ import ForgotPasswordView from "@/components/ForgotPasswordView";
 export default function ForgotPasswordPage() {
   const router = useRouter();
   return (
-    <div className="min-h-[calc(100vh-140px)] flex flex-col items-center justify-center px-6 py-12 animate-fade-up">
+    <div className="w-full flex-1 flex flex-col items-stretch justify-center px-4 sm:px-6 lg:px-10 py-8 lg:py-12 animate-fade-up min-h-[calc(100vh-140px)]">
       <ForgotPasswordView onBackToLogin={() => router.push("/login")} />
     </div>
   );

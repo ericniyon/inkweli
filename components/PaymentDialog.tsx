@@ -25,6 +25,8 @@ interface PaymentDialogProps {
   authenticatedCheckout?: boolean;
   /** Signed-in user id — required with authenticatedCheckout for `/api/payments/initiate`. */
   checkoutUserId?: string | null;
+  /** When paying for `plan_per_article` from the reader, the story id to record on the purchase */
+  checkoutArticleId?: string | null;
 }
 
 const PENDING_REF_KEY = "inkwell_pending_payment_reference";
@@ -61,6 +63,7 @@ export default function PaymentDialog({
   payerEmailOverride,
   authenticatedCheckout,
   checkoutUserId,
+  checkoutArticleId,
 }: PaymentDialogProps) {
   const [channel, setChannel] = useState<CheckoutChannel>("MOMO");
   const [phoneNumber, setPhoneNumber] = useState(
@@ -99,6 +102,17 @@ export default function PaymentDialog({
         return;
       }
 
+      const articleRef =
+        typeof checkoutArticleId === "string" ? checkoutArticleId.trim() : "";
+      if (plan.id === "plan_per_article" && articleRef.length === 0) {
+        setError(
+          "Per-article payment must start from inside an article so it can be linked to that story.",
+        );
+        setProcessing(false);
+        return;
+      }
+      const perArticleCheckout = plan.id === "plan_per_article";
+
       const initiateBody =
         authenticatedCheckout && checkoutUserId
           ? {
@@ -109,6 +123,7 @@ export default function PaymentDialog({
               name: payerName || "Customer",
               phone: phone || "",
               channelName: channel,
+              ...(perArticleCheckout ? { article_id: articleRef } : {}),
             }
           : {
               plan_id: plan.id,
@@ -118,6 +133,7 @@ export default function PaymentDialog({
               name: payerName || "Customer",
               phone: phone || "",
               channelName: channel,
+              ...(perArticleCheckout ? { article_id: articleRef } : {}),
             };
 
       const res = await fetch(initiateApiUrl, {

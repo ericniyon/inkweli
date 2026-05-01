@@ -46,7 +46,7 @@ function LoginPageContent() {
   const initialError = errorCode ? ERROR_MESSAGE : null;
 
   return (
-    <div className="min-h-[calc(100vh-140px)] flex flex-col items-center justify-center px-6 py-12 animate-fade-up">
+    <div className="w-full flex-1 flex flex-col items-stretch justify-center px-4 sm:px-6 lg:px-10 py-8 lg:py-12 animate-fade-up min-h-[calc(100vh-140px)]">
       <LoginView
         initialError={initialError}
         onLogin={(user) => {
@@ -89,7 +89,13 @@ function LoginPageContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-[calc(100vh-140px)] flex items-center justify-center"><div className="w-8 h-8 border-2 border-slate-200 border-t-slate-800 rounded-full animate-spin" /></div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-[calc(100vh-140px)] flex items-center justify-center px-4">
+          <div className="w-10 h-10 border-2 border-stone-200 border-t-indigo-600 rounded-full animate-spin" />
+        </div>
+      }
+    >
       <LoginPageContent />
     </Suspense>
   );
