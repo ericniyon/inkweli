@@ -208,6 +208,8 @@ model Subscription {
   id                String                       @id @default(cuid())
   userId            String                       @map("user_id")
   planId            String                       @map("plan_id")
+  /** When set (e.g. plan_per_article from article page), the story this purchase unlocked */
+  articleId         String?                      @map("article_id")
   email             String                       @map("email")
   status            SubscriptionLifecycleStatus @default(PENDING)
   paymentReference  String                       @unique @map("payment_reference")
@@ -248,6 +250,7 @@ model Payment {
   id               String   @id @default(cuid())
   userId           String   @map("user_id")
   planId           String   @map("plan_id")
+  articleId        String?  @map("article_id")
   payerCode        String   @map("payer_code")
   paymentReference String   @unique @map("payment_reference")
   amount           Int
@@ -264,6 +267,7 @@ model UrubutoPayTransaction {
   transactionId           String    @unique @map("transaction_id")
   internalTransactionRef  String?   @map("internal_transaction_ref")
   userId                  String?   @map("user_id")
+  articleId               String?   @map("article_id")
   email                   String?   @map("email")
   tier                    String    @map("tier")
   planId                  String    @default("plan_per_article") @map("plan_id")

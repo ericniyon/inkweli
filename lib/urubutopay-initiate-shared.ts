@@ -108,6 +108,18 @@ export async function resolveCheckoutPlan(planIdFromClient: string): Promise<
   };
 }
 
+/** Single-story checkout must record `article_id`. Monthly tiers (e.g. plan_novis) must not. */
+export async function checkoutPlanRequiresLinkedArticle(planId: string): Promise<boolean> {
+  const id = planId.trim();
+  if (!id) return false;
+  if (id === "plan_per_article") return true;
+  const row = await prisma.subscriptionPlan.findUnique({
+    where: { id },
+    select: { interval: true },
+  });
+  return (row?.interval ?? "").trim().toLowerCase() === "article";
+}
+
 export type InitiateUrubutuResult =
   | {
       ok: true;
@@ -137,6 +149,8 @@ export async function createUrubutuTransactionAndInitiate(args: {
   preassignedTransactionId?: string | null;
   /** Custom amount for the payment (overrides plan price) */
   amount?: number;
+  /** Article unlocked by per-article / reader checkout when applicable */
+  articleId?: string | null;
 }): Promise<InitiateUrubutuResult> {
   const apiKey = getApiKey();
   const merchantCode = getMerchantCode();
@@ -249,6 +263,7 @@ export async function createUrubutuTransactionAndInitiate(args: {
       status: "INITIATED",
       payerNames: args.payerName,
       email: args.payerEmail ?? null,
+      articleId: typeof args.articleId === "string" && args.articleId.trim() ? args.articleId.trim() : null,
     },
   }).catch(() => null);
 

@@ -104,6 +104,11 @@ function MembershipPageInner() {
       const planCfg = plans.find((p) => p.id === planId);
       if (!planCfg) return;
 
+      if (planCfg.id === "plan_per_article") {
+        router.push(isGuest ? `/login?callbackUrl=${encodeURIComponent("/")}` : "/");
+        return;
+      }
+
       if (isGuest) {
         try {
           localStorage.setItem(PENDING_PLAN_STORAGE_KEY, planId);
@@ -143,6 +148,12 @@ function MembershipPageInner() {
 
     const planCfg = plans.find((p) => p.id === pid);
     if (!planCfg) {
+      router.replace("/membership", { scroll: false });
+      autoOpenedRef.current = null;
+      return;
+    }
+
+    if (pid === "plan_per_article") {
       router.replace("/membership", { scroll: false });
       autoOpenedRef.current = null;
       return;

@@ -48,6 +48,7 @@ const MembershipView: React.FC<MembershipViewProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
             {plans.map((plan) => {
               const isAnnual = plan.id === "plan_annual";
+              const isPerStory = plan.id === "plan_per_article";
               const isCurrent = !!currentPlan && currentPlan.id === plan.id;
               return (
                 <article
@@ -144,9 +145,18 @@ const MembershipView: React.FC<MembershipViewProps> = ({
                         {isLoggedIn
                           ? isCurrent
                             ? "Current plan"
-                            : "Subscribe"
-                          : "Subscribe"}
+                            : isPerStory
+                              ? "Browse a story → pay there"
+                              : "Subscribe"
+                          : isPerStory
+                            ? "Sign in · then open a story to pay"
+                            : "Subscribe"}
                       </button>
+                    )}
+                    {isPerStory && (
+                      <p className={`mt-3 text-xs leading-relaxed text-center font-charter ${isAnnual ? "text-slate-400" : "text-slate-500"}`}>
+                        Payments for this tier are tied to the article you unlock from its page.
+                      </p>
                     )}
                   </div>
                 </article>

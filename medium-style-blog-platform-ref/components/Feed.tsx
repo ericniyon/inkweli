@@ -5,7 +5,6 @@ import { Article } from '../types';
 
 const Feed: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'forYou' | 'following'>('forYou');
-  const [showBanner, setShowBanner] = useState(true);
 
   const articles: Article[] = [
     {
@@ -54,30 +53,6 @@ const Feed: React.FC = () => {
           <i className="fa-solid fa-plus text-xs"></i>
         </button>
       </div>
-
-      {/* Membership Banner */}
-      {showBanner && (
-        <div className="bg-zinc-50 border border-zinc-100 rounded-lg p-6 flex items-start gap-6 relative mb-8">
-          <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm shrink-0">
-            <i className="fa-solid fa-star text-yellow-400 text-xl"></i>
-          </div>
-          <div className="flex-1">
-            <h3 className="font-bold text-zinc-900 mb-1">Your first member-only story is free</h3>
-            <p className="text-zinc-500 text-sm mb-3">
-              Continue reading the story below or unlock any story with the star icon.
-            </p>
-            <button className="text-zinc-900 font-bold text-sm underline hover:text-zinc-600 transition-colors">
-              Upgrade to access all of usethinkup
-            </button>
-          </div>
-          <button 
-            onClick={() => setShowBanner(false)}
-            className="text-zinc-300 hover:text-zinc-900 transition-colors absolute top-4 right-4"
-          >
-            <i className="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-      )}
 
       {/* Article List */}
       <div className="space-y-2">

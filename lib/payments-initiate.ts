@@ -1,4 +1,5 @@
 import { randomBytes } from "crypto";
+import type { SubscriptionTier } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { URUBUTO_INITIATE_LINK_PAYMENT_URL } from "@/constants";
 import {
@@ -10,7 +11,93 @@ import {
   type PaymentChannel,
 } from "@/lib/urubutopay";
 import { getAppOrigin } from "@/lib/app-origin";
-import { resolveCheckoutPlan } from "@/lib/urubutopay-initiate-shared";
+import {
+  resolveCheckoutPlan,
+  checkoutPlanRequiresLinkedArticle,
+} from "@/lib/urubutopay-initiate-shared";
+
+function isUniqueConstraintError(e: unknown): boolean {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    "code" in e &&
+    (e as { code: string }).code === "P2002"
+  );
+}
+
+/**
+ * After Urubutu accept-link-payment: mirror pending rows used by `/api/urubutopay/initiate`:
+ * Payment + UrubutoPayTransaction (webhook tier + status polling), plus Subscription when unlocking one story.
+ */
+async function persistInitiateCheckoutSnapshot(args: {
+  userId: string;
+  email: string;
+  name: string;
+  planId: string;
+  payerCodeOutbound: string;
+  amount: number;
+  paymentReferenceRaw: string;
+  channelName: PaymentChannel;
+  tierForTransaction: SubscriptionTier;
+  articleIdForPayment: string | null;
+  linkStorySubscription: boolean;
+}): Promise<void> {
+  const ref = args.paymentReferenceRaw.trim().slice(0, 512);
+  try {
+    await prisma.payment.create({
+      data: {
+        userId: args.userId,
+        planId: args.planId,
+        articleId: args.articleIdForPayment,
+        payerCode: args.payerCodeOutbound.slice(0, 512),
+        paymentReference: ref,
+        amount: args.amount,
+        status: "pending",
+      },
+    });
+  } catch (e) {
+    if (!isUniqueConstraintError(e)) throw e;
+  }
+
+  try {
+    await prisma.urubutoPayTransaction.create({
+      data: {
+        transactionId: ref,
+        internalTransactionRef: null,
+        userId: args.userId,
+        email: args.email.toLowerCase(),
+        tier: args.tierForTransaction,
+        planId: args.planId,
+        amount: args.amount,
+        currency: "RWF",
+        channel: args.channelName,
+        status: "INITIATED",
+        payerNames: args.name.slice(0, 512),
+        payerCode: args.payerCodeOutbound.slice(0, 512),
+        articleId: args.articleIdForPayment,
+      },
+    });
+  } catch (e) {
+    if (!isUniqueConstraintError(e)) throw e;
+  }
+
+  if (args.linkStorySubscription && args.articleIdForPayment) {
+    try {
+      await prisma.subscription.create({
+        data: {
+          userId: args.userId,
+          planId: args.planId,
+          articleId: args.articleIdForPayment,
+          email: args.email.toLowerCase(),
+          status: "PENDING",
+          paymentReference: ref,
+        },
+      });
+    } catch (e) {
+      if (!isUniqueConstraintError(e)) throw e;
+    }
+  }
+}
 
 /** Match Urubutu samples: 2507… or 078… */
 function normalizeRwPayerPhone(raw: string): string {
@@ -44,6 +131,8 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
   phone: string;
   /** Wallet: MOMO / AIRTEL_MONEY — hosted card checkout: CARD (omit → MOMO) */
   channelName?: string;
+  /** Story being unlocked when purchasing plan_per_article from the reader */
+  article_id?: string | null;
 }): Promise<PaymentsInitiateResult> {
   const plan_id = input.plan_id.trim();
   const user_id = input.user_id.trim();
@@ -65,6 +154,17 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
       status: 400,
       error: "channelName must be MOMO, AIRTEL_MONEY, or CARD",
     };
+  }
+
+  let articleIdForPayment: string | null = null;
+  const articleRaw =
+    typeof input.article_id === "string" ? input.article_id.trim() : "";
+  if (articleRaw) {
+    const articleRow = await prisma.article.findUnique({
+      where: { id: articleRaw },
+      select: { id: true },
+    });
+    articleIdForPayment = articleRow?.id ?? null;
   }
 
   if (
@@ -99,7 +199,20 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
     return { ok: false, status: 400, error: resolved.error };
   }
 
-  const { canonicalGatewayPlanId, price: planPrice } = resolved;
+  const {
+    canonicalGatewayPlanId,
+    price: planPrice,
+    tierForTransaction,
+  } = resolved;
+
+  if ((await checkoutPlanRequiresLinkedArticle(plan_id)) && !articleIdForPayment) {
+    return {
+      ok: false,
+      status: 400,
+      error:
+        "article_id is required for per-article checkout. Open the story you want and pay from that article page.",
+    };
+  }
 
   // Allow flexible amount for testing
   // if (amount !== planPrice) {
@@ -303,6 +416,31 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
         payment_reference,
         message,
       });
+      const linkStorySub =
+        Boolean(articleIdForPayment) &&
+        (await checkoutPlanRequiresLinkedArticle(plan_id));
+      try {
+        await persistInitiateCheckoutSnapshot({
+          userId: user_id,
+          email,
+          name,
+          planId: plan_id,
+          payerCodeOutbound: payer_code,
+          amount,
+          paymentReferenceRaw: payment_reference,
+          channelName,
+          tierForTransaction,
+          articleIdForPayment,
+          linkStorySubscription: linkStorySub,
+        });
+      } catch (e) {
+        console.error("[payments/initiate] Failed to persist checkout snapshot (wallet)", e);
+        return {
+          ok: false,
+          status: 500,
+          error: "Could not record pending payment",
+        };
+      }
       return { ok: true, payment_url: "", payment_reference };
     }
     
@@ -320,19 +458,26 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
 
   const payment_url = paymentLinkRaw.trim();
 
+  const linkStorySub =
+    Boolean(articleIdForPayment) &&
+    (await checkoutPlanRequiresLinkedArticle(plan_id));
+
   try {
-    await prisma.payment.create({
-      data: {
-        userId: user_id,
-        planId: plan_id,
-        payerCode: payer_code,
-        paymentReference: payment_reference.slice(0, 512),
-        amount,
-        status: "pending",
-      },
+    await persistInitiateCheckoutSnapshot({
+      userId: user_id,
+      email,
+      name,
+      planId: plan_id,
+      payerCodeOutbound: payer_code,
+      amount,
+      paymentReferenceRaw: payment_reference,
+      channelName,
+      tierForTransaction,
+      articleIdForPayment,
+      linkStorySubscription: linkStorySub,
     });
   } catch (e) {
-    console.error("[payments/initiate] Failed to insert pending payment", e);
+    console.error("[payments/initiate] Failed to insert pending checkout records", e);
     return {
       ok: false,
       status: 500,

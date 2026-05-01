@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import ArticleDetailClient from "@/components/ArticleDetailClient";
 import { authOptions } from "@/lib/auth";
 import { getArticleById, getArticlesList, getWriters } from "@/lib/articles-server";
+import { userHasFullReadAccessToArticle } from "@/lib/article-access";
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -41,11 +42,16 @@ export default async function ArticleDetailPage({ params }: PageProps) {
     );
   }
 
+  const readerHasFullAccess = await userHasFullReadAccessToArticle(session.userId, id, {
+    articleAuthorId: article.authorId,
+  });
+
   return (
     <ArticleDetailClient
       article={article}
       allArticles={allArticles}
       writers={writers}
+      initialReaderHasFullAccess={readerHasFullAccess}
     />
   );
 }

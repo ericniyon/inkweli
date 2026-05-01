@@ -1,6 +1,14 @@
 "use client";
 
 import React from "react";
+import {
+  BarChart2,
+  Bookmark,
+  Home,
+  LayoutList,
+  Plus,
+  UserRound,
+} from "lucide-react";
 import { PLACEHOLDER_IMAGE } from "@/constants";
 
 interface Writer {
@@ -15,83 +23,78 @@ interface DashboardSidebarProps {
   following: Writer[];
 }
 
-const NavItem: React.FC<{
-  icon: React.ReactNode;
+type NavDef = {
+  view: string;
   label: string;
-  active?: boolean;
-  onClick: () => void;
-}> = ({ icon, label, active, onClick }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className={`flex flex-col items-center py-4 w-full cursor-pointer transition-colors ${active ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-900"}`}
-  >
-    <span className="text-xl mb-1 [&>svg]:w-5 [&>svg]:h-5">{icon}</span>
-    <span className="text-[11px] font-medium">{label}</span>
-  </button>
-);
+  Icon: typeof Home;
+};
 
-const HouseIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-  </svg>
-);
-const BookmarkIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-  </svg>
-);
-const ListIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-  </svg>
-);
-const ChartIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeWidth="2" d="M7 12l3-3 3 3 4-8M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-  </svg>
-);
-const UserIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-  </svg>
-);
-const PlusIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-  </svg>
-);
+const NAV_ITEMS: NavDef[] = [
+  { view: "home", label: "Home", Icon: Home },
+  { view: "library", label: "Library", Icon: Bookmark },
+  { view: "stories", label: "Stories", Icon: LayoutList },
+  { view: "stats", label: "Stats", Icon: BarChart2 },
+  { view: "profile", label: "Profile", Icon: UserRound },
+];
 
 export default function DashboardSidebar({ activeView, onNavigate, following }: DashboardSidebarProps) {
   return (
-    <aside className="w-20 border-r border-zinc-100 h-screen fixed left-0 top-0 flex flex-col pt-16 bg-white hidden md:flex z-40">
-      <div className="flex-1 space-y-2">
-        <NavItem icon={<HouseIcon />} label="Home" active={activeView === "home"} onClick={() => onNavigate("home")} />
-        <NavItem icon={<BookmarkIcon />} label="Library" active={activeView === "library"} onClick={() => onNavigate("library")} />
-        <NavItem icon={<ListIcon />} label="Stories" active={activeView === "stories"} onClick={() => onNavigate("stories")} />
-        <NavItem icon={<ChartIcon />} label="Stats" active={activeView === "stats"} onClick={() => onNavigate("stats")} />
-        <NavItem icon={<UserIcon />} label="Profile" active={activeView === "profile"} onClick={() => onNavigate("profile")} />
-      </div>
-
-      <div className="pb-8 px-2">
-        <div className="text-[10px] font-bold text-zinc-400 mb-4 text-center uppercase tracking-wider">Following</div>
-        <div className="flex flex-col items-center space-y-4">
-          {following.slice(0, 3).map((user) => (
+    <aside className="w-56 border-r border-slate-200/80 h-screen fixed left-0 top-0 hidden md:flex z-40 flex-col bg-[#FDFCFB] pt-16 font-charter">
+      <nav className="flex-1 px-3 pt-6 pb-4 space-y-1" aria-label="Dashboard">
+        {NAV_ITEMS.map(({ view, label, Icon }) => {
+          const active = activeView === view;
+          return (
             <button
-              key={user.id}
+              key={view}
               type="button"
-              className="w-8 h-8 rounded-full border border-zinc-200 overflow-hidden hover:ring-2 hover:ring-zinc-100 transition-all focus:outline-none focus:ring-2 focus:ring-zinc-200"
+              onClick={() => onNavigate(view)}
+              className={[
+                "w-full flex items-center gap-3 rounded-xl px-3.5 py-3 text-left transition-colors",
+                active
+                  ? "bg-slate-900 text-white shadow-md shadow-slate-900/15"
+                  : "text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm border border-transparent hover:border-slate-200/80",
+              ].join(" ")}
             >
-              <img src={user.image || PLACEHOLDER_IMAGE} alt={user.name} className="w-full h-full object-cover" />
+              <Icon
+                size={20}
+                strokeWidth={active ? 2 : 1.75}
+                className={active ? "text-white shrink-0" : "text-slate-500 shrink-0"}
+                aria-hidden
+              />
+              <span className="text-medium-meta font-semibold tracking-tight">{label}</span>
             </button>
-          ))}
-          <button
-            type="button"
-            className="w-8 h-8 rounded-full border border-zinc-200 flex items-center justify-center text-zinc-400 hover:text-zinc-900 transition-colors"
-            aria-label="Add"
-          >
-            <PlusIcon />
-          </button>
+          );
+        })}
+      </nav>
+
+      <div className="px-3 pb-8 pt-2 border-t border-slate-200/60 mt-auto bg-[#F9F7F5]/90">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.12em] px-1 mb-3">
+          Following
+        </p>
+        <div className="flex flex-col items-stretch gap-2.5">
+          <div className="flex flex-wrap gap-2 justify-start">
+            {following.slice(0, 6).map((user) => (
+              <button
+                key={user.id}
+                type="button"
+                title={user.name}
+                className="w-9 h-9 rounded-full border border-slate-200 bg-white overflow-hidden hover:ring-2 hover:ring-indigo-500/25 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
+              >
+                <img
+                  src={user.image || PLACEHOLDER_IMAGE}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              </button>
+            ))}
+            <button
+              type="button"
+              className="w-9 h-9 rounded-full border border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-400 hover:bg-white transition-colors"
+              aria-label="Discover writers"
+            >
+              <Plus size={18} strokeWidth={2} aria-hidden />
+            </button>
+          </div>
         </div>
       </div>
     </aside>

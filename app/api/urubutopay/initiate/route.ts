@@ -4,8 +4,21 @@ import { randomBytes } from "crypto";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SUBSCRIPTION_PLANS } from "@/constants";
-import { createUrubutuTransactionAndInitiate } from "@/lib/urubutopay-initiate-shared";
+import {
+  createUrubutuTransactionAndInitiate,
+  checkoutPlanRequiresLinkedArticle,
+} from "@/lib/urubutopay-initiate-shared";
 import type { PaymentChannel } from "@/lib/urubutopay";
+
+async function validatedArticleId(raw: unknown): Promise<string | null> {
+  const id = typeof raw === "string" ? raw.trim() : "";
+  if (!id) return null;
+  const row = await prisma.article.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+  return row?.id ?? null;
+}
 
 /**
  * Initiates UrubutoPay (POST to https://urubutopay.rw/api/payment/initiate-link-payment via lib/urubutopay).
@@ -31,6 +44,8 @@ export async function POST(request: Request) {
       typeof body.returnUrl === "string" && body.returnUrl.trim() ? body.returnUrl.trim() : undefined;
     const amount = typeof body.amount === "number" ? body.amount : undefined;
 
+    const articleId = await validatedArticleId(body.article_id);
+
     const session = await getServerSession(authOptions);
     const sessionUserId = session?.userId;
 
@@ -53,6 +68,16 @@ export async function POST(request: Request) {
         }));
       if (!planKnown) {
         return NextResponse.json({ error: "Invalid plan_id" }, { status: 400 });
+      }
+
+      if ((await checkoutPlanRequiresLinkedArticle(planId)) && !articleId) {
+        return NextResponse.json(
+          {
+            error:
+              "article_id is required for per-article purchases. Open an article first, then pay from that page.",
+          },
+          { status: 400 }
+        );
       }
 
       if (!channelName || !phoneNumber || !payerName) {
@@ -83,6 +108,7 @@ export async function POST(request: Request) {
         data: {
           userId: user.id,
           planId,
+          articleId,
           email: user.email.toLowerCase(),
           status: "PENDING",
           paymentReference,
@@ -99,6 +125,7 @@ export async function POST(request: Request) {
         userId: user.id,
         preassignedTransactionId: paymentReference,
         amount,
+        articleId,
       });
 
       if (!result.ok) {
@@ -148,6 +175,16 @@ export async function POST(request: Request) {
       );
     }
 
+    if ((await checkoutPlanRequiresLinkedArticle(planId)) && !articleId) {
+      return NextResponse.json(
+        {
+          error:
+            "article_id is required for per-article purchases. Open an article first, then pay from that page.",
+        },
+        { status: 400 }
+      );
+    }
+
     const result = await createUrubutuTransactionAndInitiate({
       planId,
       channelName,
@@ -157,6 +194,7 @@ export async function POST(request: Request) {
       returnUrl,
       userId,
       amount,
+      articleId,
     });
 
     if (!result.ok) {

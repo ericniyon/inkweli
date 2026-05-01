@@ -30,7 +30,7 @@ export default function DashboardRightPanel({
   topics = [],
 }: DashboardRightPanelProps) {
   return (
-    <aside className="hidden lg:block w-80 min-h-screen border-l border-zinc-100 p-8 space-y-10">
+    <aside className="hidden lg:block w-80 shrink-0 min-h-screen border-l border-zinc-100 px-5 py-6 lg:py-8 space-y-10">
       <section className="space-y-4">
         <h3 className="font-bold text-sm text-zinc-900">Staff Picks</h3>
         <div className="space-y-4">

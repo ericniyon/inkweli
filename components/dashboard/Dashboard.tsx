@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Article } from "@/types";
 import { WRITERS, PLACEHOLDER_IMAGE } from "@/constants";
 import { useAuth } from "@/lib/auth-context";
@@ -29,6 +29,7 @@ export default function Dashboard({
 }: DashboardProps) {
   const { user, setUser, isGuest, logout, hydrated } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeView, setActiveView] = useState<DashboardView>("home");
   const [activeTab, setActiveTab] = useState<"forYou" | "following">("forYou");
   const [articles, setArticles] = useState<Article[]>(initialArticles);
@@ -42,6 +43,14 @@ export default function Dashboard({
   useEffect(() => {
     if (initialWriters && initialWriters.length > 0) setWriters(initialWriters);
   }, [initialWriters]);
+
+  useEffect(() => {
+    const v = searchParams.get("view");
+    const valid: DashboardView[] = ["home", "library", "stories", "stats", "profile"];
+    if (v && valid.includes(v as DashboardView)) {
+      setActiveView(v as DashboardView);
+    }
+  }, [searchParams]);
 
   const publishedArticles = useMemo(
     () => articles.filter((a) => a.status === "PUBLISHED"),
@@ -123,6 +132,11 @@ export default function Dashboard({
       return;
     }
     setActiveView(view as DashboardView);
+    if (view === "home") {
+      router.replace("/dashboard", { scroll: false });
+    } else {
+      router.replace(`/dashboard?view=${encodeURIComponent(view)}`, { scroll: false });
+    }
   };
 
   const handleLogout = () => {
@@ -152,7 +166,7 @@ export default function Dashboard({
     switch (activeView) {
       case "home":
         return (
-          <div className="w-full flex">
+          <div className="w-full flex flex-row justify-between items-stretch gap-0 min-w-0">
             <div className="flex-1 min-w-0">
               <DashboardFeed
                 articles={feedArticles}
@@ -177,33 +191,43 @@ export default function Dashboard({
         );
       case "library":
         return (
-          <LibraryView
-            bookmarks={articles.filter((a) => user.bookmarks.includes(a.id))}
-            onArticleClick={handleArticleClick}
-          />
+          <div className="max-w-5xl">
+            <LibraryView
+              bookmarks={articles.filter((a) => user.bookmarks.includes(a.id))}
+              onArticleClick={handleArticleClick}
+            />
+          </div>
         );
       case "profile":
         return (
-          <ProfileView
-            user={user}
-            articles={userArticles}
-            onArticleClick={handleArticleClick}
-            onLogout={handleLogout}
-          />
+          <div className="max-w-5xl">
+            <ProfileView
+              user={user}
+              articles={userArticles}
+              onArticleClick={handleArticleClick}
+              onLogout={handleLogout}
+            />
+          </div>
         );
       case "stories":
         return (
-          <StoriesManagementView
-            articles={userArticles}
-            onEdit={(a) => router.push(`/admin/editor?id=${a.id}`)}
-            onNew={() => router.push("/admin/editor")}
-          />
+          <div className="max-w-6xl">
+            <StoriesManagementView
+              articles={userArticles}
+              onEdit={(a) => router.push(`/admin/editor?id=${a.id}`)}
+              onNew={() => router.push("/admin/editor")}
+            />
+          </div>
         );
       case "stats":
-        return <StatsView articles={userArticles} />;
+        return (
+          <div className="max-w-5xl">
+            <StatsView articles={userArticles} />
+          </div>
+        );
       default:
         return (
-          <div className="w-full flex">
+          <div className="w-full flex flex-row justify-between items-stretch gap-0 min-w-0">
             <div className="flex-1 min-w-0">
               <DashboardFeed
                 articles={feedArticles}
@@ -240,8 +264,10 @@ export default function Dashboard({
           following={writers}
         />
 
-        <main className="flex-1 md:ml-20 flex justify-center">
-          <div className="w-full max-w-5xl">{renderMainContent()}</div>
+        <main className="flex-1 md:ml-56 flex justify-start min-w-0 w-full">
+          <div className="w-full min-w-0 max-w-none flex-1 px-5 sm:px-8 lg:px-10 xl:px-12">
+            {renderMainContent()}
+          </div>
         </main>
       </div>
     </div>
