@@ -1,6 +1,10 @@
 {
   "/api/site-settings/route": "app/api/site-settings/route.js",
   "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/api/subscription-plans/route": "app/api/subscription-plans/route.js",
+  "/api/articles/[id]/route": "app/api/articles/[id]/route.js",
+  "/api/payments/initiate/route": "app/api/payments/initiate/route.js",
+  "/api/payments/events/route": "app/api/payments/events/route.js",
   "/detail/[id]/page": "app/detail/[id]/page.js",
   "/dashboard/page": "app/dashboard/page.js"
 }
