@@ -27,6 +27,15 @@ export default function SiteHeader({
   const isLanding = variant === "landing";
   const navBg = "bg-white/95 backdrop-blur-md border-b border-slate-100";
 
+  const membershipLink = (
+    <Link
+      href="/membership"
+      className="font-charter text-sm font-medium text-slate-600 hover:text-slate-900 py-2 px-3 rounded-lg hover:bg-slate-50 transition-colors"
+    >
+      Membership
+    </Link>
+  );
+
   const writerLink = (
     <Link
       href="/become-a-writer"
@@ -56,7 +65,10 @@ export default function SiteHeader({
 
   const rightSection = (
     <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-      <div className="hidden md:flex items-center gap-1">{writerLink}</div>
+      <div className="hidden md:flex items-center gap-1">
+        {membershipLink}
+        {writerLink}
+      </div>
       {isGuest ? (
         <div className="hidden md:flex items-center gap-2">
           {signInLink}
@@ -155,6 +167,9 @@ export default function SiteHeader({
           }`}
         >
           <nav className="flex flex-col p-6 gap-1">
+            <Link href="/membership" onClick={() => setMenuOpen(false)} className="font-charter text-base font-medium text-slate-700 py-3 px-4 rounded-xl hover:bg-slate-50">
+              Membership
+            </Link>
             <Link href="/become-a-writer" onClick={() => setMenuOpen(false)} className="font-charter text-base font-medium text-slate-700 py-3 px-4 rounded-xl hover:bg-slate-50">
               Become Writer
             </Link>
@@ -210,6 +225,9 @@ export default function SiteHeader({
         }`}
       >
         <nav className="flex flex-col p-6 gap-1">
+          <Link href="/membership" onClick={() => setMenuOpen(false)} className="font-charter text-base font-medium text-slate-700 py-3 px-4 rounded-xl hover:bg-slate-50">
+            Membership
+          </Link>
           <Link href="/become-a-writer" onClick={() => setMenuOpen(false)} className="font-charter text-base font-medium text-slate-700 py-3 px-4 rounded-xl hover:bg-slate-50">
             Become Writer
           </Link>
