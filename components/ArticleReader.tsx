@@ -832,13 +832,13 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                      {showUpgradeInPaywall && onFullAccessCheckout ? (
+                      {onFullAccessCheckout ? (
                         <button
                           type="button"
                           onClick={onFullAccessCheckout}
                           className="font-charter inline-flex items-center justify-center px-7 py-3.5 rounded-full bg-slate-900 text-white text-sm md:text-base font-bold hover:bg-slate-800 transition shadow-lg hover:shadow-xl"
                         >
-                          Full access
+                          {showUpgradeInPaywall ? 'Full access' : 'Full access per a year'}
                         </button>
                       ) : (
                         <Link
@@ -847,7 +847,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
                           }
                           className="font-charter inline-flex items-center justify-center px-7 py-3.5 rounded-full bg-slate-900 text-white text-sm md:text-base font-bold hover:bg-slate-800 transition shadow-lg hover:shadow-xl"
                         >
-                          {showUpgradeInPaywall ? 'Full access' : 'View membership options'}
+                          {showUpgradeInPaywall ? 'Full access' : 'Full access per a year'}
                         </Link>
                       )}
                       <button

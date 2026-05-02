@@ -146,19 +146,36 @@ function ArticleDetailClientInner({
     }
   }, [setUser]);
 
+  /** Guests must sign in before checkout; login returns here with ?plan= so we open PaymentDialog */
+  const redirectToLoginForArticleCheckout = useCallback(
+    (planId: "plan_annual" | "plan_per_article") => {
+      const path = `/detail/${article.id}?plan=${encodeURIComponent(planId)}`;
+      router.push(`/login?callbackUrl=${encodeURIComponent(path)}`);
+    },
+    [article.id, router],
+  );
+
   const openPerArticlePaymentDialog = useCallback(() => {
+    if (isGuest) {
+      redirectToLoginForArticleCheckout("plan_per_article");
+      return;
+    }
     const planCfg = plans.find((p) => p.id === "plan_per_article");
     if (!planCfg) return;
     setCheckoutPlan(planCfgToPayment(planCfg));
     setPaymentDialogOpen(true);
-  }, [plans, planCfgToPayment]);
+  }, [isGuest, redirectToLoginForArticleCheckout, plans, planCfgToPayment]);
 
   const openAnnualFullAccessDialog = useCallback(() => {
+    if (isGuest) {
+      redirectToLoginForArticleCheckout("plan_annual");
+      return;
+    }
     const planCfg = plans.find((p) => p.id === "plan_annual");
     if (!planCfg) return;
     setCheckoutPlan(planCfgToPayment(planCfg));
     setPaymentDialogOpen(true);
-  }, [plans, planCfgToPayment]);
+  }, [isGuest, redirectToLoginForArticleCheckout, plans, planCfgToPayment]);
 
   useEffect(() => {
     if (!hydrated || isGuest || plans.length === 0) return;

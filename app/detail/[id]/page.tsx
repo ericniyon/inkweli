@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import ArticleDetailClient from "@/components/ArticleDetailClient";
 import { authOptions } from "@/lib/auth";
@@ -15,12 +14,10 @@ export const revalidate = 0;
 export default async function ArticleDetailPage({ params }: PageProps) {
   const { id } = await params;
   const session = await getServerSession(authOptions);
-  if (!session?.userId) {
-    redirect(`/login?callbackUrl=${encodeURIComponent(`/detail/${id}`)}`);
-  }
+  const userId = session?.userId ?? null;
 
   const [article, allArticles, writers] = await Promise.all([
-    getArticleById(id, session.userId),
+    getArticleById(id, userId),
     getArticlesList(false),
     getWriters(),
   ]);
@@ -42,7 +39,7 @@ export default async function ArticleDetailPage({ params }: PageProps) {
     );
   }
 
-  const readerHasFullAccess = await userHasFullReadAccessToArticle(session.userId, id, {
+  const readerHasFullAccess = await userHasFullReadAccessToArticle(userId, id, {
     articleAuthorId: article.authorId,
   });
 
@@ -59,10 +56,7 @@ export default async function ArticleDetailPage({ params }: PageProps) {
 export async function generateMetadata({ params }: PageProps) {
   const { id } = await params;
   const session = await getServerSession(authOptions);
-  if (!session?.userId) {
-    return { title: "Sign in to read | usethinkup" };
-  }
-  const article = await getArticleById(id, session.userId);
+  const article = await getArticleById(id, session?.userId ?? null);
   if (!article) return { title: "Article not found | usethinkup" };
   return { title: `${article.title} | usethinkup` };
 }

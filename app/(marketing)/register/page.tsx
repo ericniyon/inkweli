@@ -56,6 +56,10 @@ function RegisterPageInner() {
           } catch {
             // ignore
           }
+          if (callbackUrlParam) {
+            router.push(callbackUrlParam);
+            return;
+          }
           router.push("/dashboard");
         }}
         onLogin={() => router.push(loginHref)}
