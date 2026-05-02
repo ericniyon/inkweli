@@ -14,8 +14,7 @@ import {
   syncSubscriptionLedgerFromWebhook,
   transactionStatusIndicatesFinalFailure,
 } from "@/lib/subscription-ledger";
-
-const SUCCESS_STATUSES = ["VALID", "success", "completed", "paid", "SUCCESS", "COMPLETED", "PAID"];
+import { isPaidUrubutuTransactionStatus } from "@/lib/urubutopay-claim";
 
 function planIdToTier(planId: string | undefined): SubscriptionTier {
   if (!planId) return "ONE_ARTICLE";
@@ -391,7 +390,7 @@ export async function handleUrubutoPayPaymentWebhook(request: Request, rawBody: 
       }).catch(() => {});
     }
 
-    const isSuccess = transactionStatus !== null && SUCCESS_STATUSES.includes(transactionStatus);
+    const isSuccess = isPaidUrubutuTransactionStatus(transactionStatus);
 
     await syncSubscriptionLedgerFromWebhook({
       refs: refBundle.uniqueValues,

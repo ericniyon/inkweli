@@ -248,7 +248,8 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
   const transactionRef = `ink_${Date.now()}_${randomBytes(4).toString("hex")}`;
   // Use production base URL for wallet payment redirects
   const productionBaseUrl = "https://urubutopay.rw";
-  const redirectionPwl = `${productionBaseUrl}/pwl/${pwlSlug}?pwlId=${pwlSlug}`;
+  const redirectPwlSlug = pwlSlug;
+  const redirectionPwl = `${productionBaseUrl}/pwl/${redirectPwlSlug}?pwlId=${redirectPwlSlug}`;
   const paymentChannel: "WALLET" | "CARD" =
     channelName === "CARD" ? "CARD" : "WALLET";
   const appReturnRedirectionUrl = `${getAppOrigin()}/membership/success?reference=${encodeURIComponent(transactionRef)}`;
@@ -259,9 +260,14 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
     merchantCode,
     configuredServiceId,
     gatewayServiceCode,
-    canonicalGatewayPlanId
+    canonicalGatewayPlanId,
+    pwlSlug,
+    redirectPwlSlug,
+    redirectionPwl
   });
 
+  // Urubutu validates `paymentLinkId` + `service_code` as one product; the numeric portal id
+  // must be sent separately as `payment_link_id` (see scripts/test-payment-100.ts), not as `paymentLinkId`.
   const bodyPayload: Record<string, unknown> = {
     currency: "RWF",
     merchant_code: merchantCode,
@@ -271,11 +277,15 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
     payer_names: name,
     payer_phone_number: phoneNorm,
     payer_to_be_charged: "YES",
+    paymentLinkId: pwlSlug,
+    ...(configuredPaymentLinkId ? { payment_link_id: configuredPaymentLinkId } : {}),
     payment_channel: paymentChannel,
     payment_channel_name: channelName,
     service_code: gatewayServiceCode,
-    service_id: configuredServiceId,
-    redirect_url: redirectionOutbound,
+    redirection_url: redirectionOutbound,
+    ...(configuredServiceId && configuredServiceId !== gatewayServiceCode
+      ? { service_id: configuredServiceId }
+      : {}),
   };
 
   console.log("[payments/initiate] Debug payload before filtering:", {
@@ -301,11 +311,6 @@ export async function initiateSubscriptionPaymentViaGateway(input: {
     trimmedPaidMount: trimmed.paid_mount,
     hasPaidMount: 'paid_mount' in trimmed
   });
-
-  // Ensure service_id is always included for wallet payments
-  if ((channelName === "MOMO" || channelName === "AIRTEL_MONEY") && !trimmed.service_id && configuredServiceId) {
-    trimmed.service_id = configuredServiceId;
-  }
 
   // Ensure paid_mount is always present and valid
   if (!('paid_mount' in trimmed) || trimmed.paid_mount === undefined || trimmed.paid_mount === null) {

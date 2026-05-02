@@ -6,7 +6,8 @@ import { isPaidUrubutuTransactionStatus } from "@/lib/urubutopay-claim";
 
 /**
  * Signed-in user's subscription rows (with matching SubscriptionPlan rows when present),
- * plus resolved `per_article_unlocks` for per-story checkout when recorded.
+ * plus `per_article_unlocks`: stories with a confirmed unlock only (ACTIVE `plan_per_article`
+ * subscription and/or ONE_ARTICLE UrubutuPay txn whose status counts as paid).
  */
 export async function GET() {
   try {
@@ -16,7 +17,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [subs, userRow, txRows, paymentRows] = await Promise.all([
+    const [subs, txRows] = await Promise.all([
       prisma.subscription.findMany({
         where: { userId },
         orderBy: { updatedAt: "desc" },
@@ -29,23 +30,9 @@ export async function GET() {
           updatedAt: true,
         },
       }),
-      prisma.user.findUnique({
-        where: { id: userId },
-        select: { tier: true },
-      }),
       prisma.urubutoPayTransaction.findMany({
         where: { userId, articleId: { not: null } },
         select: { articleId: true, status: true, tier: true },
-      }),
-      prisma.payment.findMany({
-        where: {
-          userId,
-          articleId: { not: null },
-          planId: "plan_per_article",
-        },
-        orderBy: { createdAt: "desc" },
-        take: 24,
-        select: { articleId: true },
       }),
     ]);
 
@@ -75,8 +62,15 @@ export async function GET() {
       orderedArticleIds.push(id);
     };
 
+    // Story access: only successes — active per-article subscription and/or gateway-paid txn rows.
     for (const s of subs) {
-      if (s.status === "ACTIVE" && s.articleId) pushArticle(s.articleId);
+      if (
+        s.planId === "plan_per_article" &&
+        s.status === "ACTIVE" &&
+        s.articleId
+      ) {
+        pushArticle(s.articleId);
+      }
     }
     for (const t of txRows) {
       if (
@@ -87,15 +81,6 @@ export async function GET() {
         pushArticle(t.articleId);
       }
     }
-    for (const s of subs) {
-      if (s.status === "PENDING" && s.articleId) pushArticle(s.articleId);
-    }
-    if (userRow?.tier === "ONE_ARTICLE") {
-      for (const p of paymentRows) {
-        pushArticle(p.articleId);
-      }
-    }
-
     const perArticleArticles =
       orderedArticleIds.length > 0
         ? await prisma.article.findMany({

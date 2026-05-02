@@ -11,9 +11,15 @@ export const PAID_TRANSACTION_STATUSES = [
   "PAID",
 ] as const;
 
+/** Normalized Urubutu gateway values that mean money settled / access may be granted. */
+const PAID_TRANSACTION_STATUSES_NORMALIZED = new Set(
+  PAID_TRANSACTION_STATUSES.map((s) => s.toUpperCase())
+);
+
+/** True only when the gateway reports a successful payment (case-insensitive). */
 export function isPaidUrubutuTransactionStatus(status: string | null | undefined): boolean {
   if (!status) return false;
-  return (PAID_TRANSACTION_STATUSES as readonly string[]).includes(status);
+  return PAID_TRANSACTION_STATUSES_NORMALIZED.has(status.trim().toUpperCase());
 }
 
 export function planIdToSubscriptionTier(planId: string | null | undefined): SubscriptionTier {
