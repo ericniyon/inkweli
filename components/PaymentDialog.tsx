@@ -219,6 +219,11 @@ export default function PaymentDialog({
   return (
     <>
       <PaymentSuccessDialog
+        key={
+          paymentSuccessDialog.isOpen && paymentSuccessDialog.reference.trim()
+            ? paymentSuccessDialog.reference.trim()
+            : "payment-success-closed"
+        }
         isOpen={paymentSuccessDialog.isOpen}
         onClose={() => setPaymentSuccessDialog({ isOpen: false, reference: "" })}
         reference={paymentSuccessDialog.reference}

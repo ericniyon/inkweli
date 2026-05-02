@@ -27,6 +27,16 @@ function statusLooksFailure(status: string): boolean {
   return ["FAILED", "CANCELED", "REVERSED"].includes(s);
 }
 
+/** Must match `/api/payments/events` stream `setTimeout(..., N)` milliseconds / 1000. */
+const STATUS_STREAM_MAX_SECONDS = 180;
+
+function formatMmSs(totalSeconds: number): string {
+  const capped = Math.max(0, totalSeconds);
+  const m = Math.floor(capped / 60);
+  const s = capped % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 function messageForStatus(status: string): string {
   const s = status.trim().toUpperCase();
   switch (s) {
@@ -56,6 +66,8 @@ export default function PaymentSuccessDialog({
     "Approve the prompt on your phone. This screen updates when UrubutuPay reports success, cancel, or failure.",
   );
   const [lastStatus, setLastStatus] = useState<string | null>(null);
+  /** Elapsed seconds while polling (resets each open/reference). */
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   const notifiedRef = useRef(false);
   const phaseRef = useRef<SettlementPhase>("waiting");
@@ -83,6 +95,7 @@ export default function PaymentSuccessDialog({
         "Approve the prompt on your phone. This screen updates when UrubutuPay reports success, cancel, or failure.",
       );
       setLastStatus(null);
+      setElapsedSeconds(0);
       return;
     }
 
@@ -92,6 +105,7 @@ export default function PaymentSuccessDialog({
       "Approve the prompt on your phone. This screen updates when UrubutuPay reports success, cancel, or failure.",
     );
     setLastStatus(null);
+    setElapsedSeconds(0);
 
     let es: EventSource;
 
@@ -176,9 +190,22 @@ export default function PaymentSuccessDialog({
     };
   }, [isOpen, reference, fireSettledOnce]);
 
+  useEffect(() => {
+    if (!isOpen || phase !== "waiting") return;
+    const id = window.setInterval(() => {
+      setElapsedSeconds((prev) => Math.min(STATUS_STREAM_MAX_SECONDS, prev + 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [isOpen, phase]);
+
+  useEffect(() => {
+    if (!isOpen) setElapsedSeconds(0);
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const waiting = phase === "waiting";
+  const remainingSeconds = Math.max(0, STATUS_STREAM_MAX_SECONDS - elapsedSeconds);
 
   const ringClass =
     phase === "success"
@@ -233,6 +260,25 @@ export default function PaymentSuccessDialog({
           <h2 className="text-xl font-black text-slate-900 text-center mb-4">
             {headline}
           </h2>
+
+          {waiting ? (
+            <div className="mb-6 flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-6 py-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Time checking
+              </p>
+              <p
+                className="text-4xl font-black tabular-nums tracking-tight text-slate-900"
+                aria-live="polite"
+                aria-label={`Elapsed ${elapsedSeconds} seconds`}
+              >
+                {formatMmSs(elapsedSeconds)}
+              </p>
+              <p className="text-xs font-medium text-slate-500 tabular-nums">
+                {formatMmSs(remainingSeconds)} left before status check stops (max.{" "}
+                {formatMmSs(STATUS_STREAM_MAX_SECONDS)})
+              </p>
+            </div>
+          ) : null}
 
           <p className="text-slate-600 text-center mb-6 leading-relaxed">{detail}</p>
 
