@@ -1,14 +1,82 @@
 /**
- * NextAuth options: credentials (password or magic-link token).
- * Required .env: NEXTAUTH_SECRET, NEXTAUTH_URL (e.g. http://localhost:3000).
+ * NextAuth: credentials (password or magic-link) + optional Google / Apple OAuth.
+ * Required: NEXTAUTH_SECRET, NEXTAUTH_URL (e.g. http://localhost:3000).
+ * OAuth: set GOOGLE_* and/or APPLE_* (see .env.example).
  */
 import type { NextAuthOptions } from "next-auth";
+import type { User as NextAuthUser } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import AppleProvider from "next-auth/providers/apple";
+import GoogleProvider from "next-auth/providers/google";
 import crypto from "crypto";
 import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/password";
 import { resolveNextAuthSecret } from "@/lib/nextauth-secret";
+import { getAppleClientSecret } from "@/lib/apple-client-secret";
+
+function buildOAuthProviders(): NextAuthOptions["providers"] {
+  const list: NonNullable<NextAuthOptions["providers"]> = [];
+
+  const googleId = process.env.GOOGLE_CLIENT_ID?.trim();
+  const googleSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+  if (googleId && googleSecret) {
+    list.push(
+      GoogleProvider({
+        clientId: googleId,
+        clientSecret: googleSecret,
+      })
+    );
+  }
+
+  const appleId = process.env.APPLE_ID?.trim();
+  const teamId = process.env.APPLE_TEAM_ID?.trim();
+  const keyId = process.env.APPLE_KEY_ID?.trim();
+  const p8 = process.env.APPLE_PRIVATE_KEY?.trim();
+  if (appleId && teamId && keyId && p8) {
+    try {
+      list.push(
+        AppleProvider({
+          clientId: appleId,
+          clientSecret: getAppleClientSecret(),
+        })
+      );
+    } catch (e) {
+      console.error("[auth] Apple provider could not be initialized:", e);
+    }
+  }
+
+  return list;
+}
+
+async function upsertUserFromOAuth(profile: {
+  email: string;
+  name: string;
+  image?: string | null;
+}) {
+  const email = profile.email.trim().toLowerCase();
+  const nameCandidate = profile.name.trim() || email.split("@")[0] || "Member";
+
+  let dbUser = await prisma.user.findUnique({ where: { email } });
+  if (!dbUser) {
+    return prisma.user.create({
+      data: {
+        email,
+        name: nameCandidate,
+        passwordHash: null,
+        role: UserRole.USER,
+        ...(profile.image ? { avatar: profile.image } : {}),
+      },
+    });
+  }
+  if (profile.image && !dbUser.avatar) {
+    await prisma.user.update({
+      where: { id: dbUser.id },
+      data: { avatar: profile.image },
+    });
+  }
+  return dbUser;
+}
 
 /** Build full User payload for client (same shape as /api/auth/login). Exported for GET /api/auth/me */
 export async function userToPayload(userId: string) {
@@ -55,6 +123,7 @@ export async function userToPayload(userId: string) {
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    ...buildOAuthProviders(),
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -108,7 +177,75 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user, account }) {
+    async signIn({ user, account, profile }) {
+      if (account?.provider === "credentials") return true;
+      if (account?.provider !== "google" && account?.provider !== "apple") return true;
+
+      let emailRaw =
+        typeof user.email === "string" && user.email.trim() ? user.email.trim().toLowerCase() : "";
+
+      const pEmail =
+        profile && typeof (profile as { email?: unknown }).email === "string"
+          ? ((profile as { email: string }).email as string).trim().toLowerCase()
+          : "";
+      if (!emailRaw && pEmail) emailRaw = pEmail;
+
+      if (!emailRaw) {
+        return "/login?error=OAuthEmailRequired";
+      }
+
+      if (account.provider === "google") {
+        const gp = profile as { email_verified?: boolean | string };
+        if (gp?.email_verified === false || gp?.email_verified === "false") {
+          return "/login?error=OAuthAccountNotVerified";
+        }
+      }
+
+      return true;
+    },
+    async jwt({ token, user, account, profile }) {
+      if (account && user && account.provider !== "credentials") {
+        let emailNorm =
+          typeof (user as NextAuthUser).email === "string" && (user as NextAuthUser).email?.trim()
+            ? ((user as NextAuthUser).email as string).trim().toLowerCase()
+            : "";
+        const fromProfile =
+          profile && typeof (profile as { email?: unknown }).email === "string"
+            ? ((profile as { email: string }).email as string).trim().toLowerCase()
+            : "";
+        if (!emailNorm && fromProfile) emailNorm = fromProfile;
+
+        if (!emailNorm) {
+          return token;
+        }
+
+        const u = user as NextAuthUser & { image?: string | null };
+        const pname =
+          profile && typeof profile === "object" && typeof (profile as { name?: string }).name === "string"
+            ? ((profile as { name: string }).name as string).trim()
+            : "";
+        const displayName =
+          (typeof u.name === "string" && u.name.trim()) ||
+          pname ||
+          emailNorm.split("@")[0] ||
+          "Member";
+        const image =
+          typeof u.image === "string" && u.image.trim()
+            ? u.image.trim()
+            : null;
+
+        const dbUser = await upsertUserFromOAuth({
+          email: emailNorm,
+          name: displayName,
+          image,
+        });
+
+        token.userId = dbUser.id;
+        token.sub = dbUser.id;
+        token.email = dbUser.email;
+        return token;
+      }
+
       if (account?.provider === "credentials" && user?.id) {
         token.userId = user.id;
         token.sub = user.id;

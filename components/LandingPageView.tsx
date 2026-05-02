@@ -154,7 +154,7 @@ const LandingPageView: React.FC<LandingPageViewProps> = ({
             ThinkUp<span className="text-accent">.</span>
           </h1>
           <p className="text-medium-h2 md:text-medium-h1 font-charter text-gray-500 max-w-2xl mx-auto leading-relaxed italic">
-            &ldquo;Knowledge that Wins You Markets&rdquo;
+            &ldquo;Insights Beyond the Obvious.&rdquo;
           </p>
         </motion.div>
         {/* Animated background icons — visible but subtle */}
