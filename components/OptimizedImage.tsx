@@ -8,6 +8,7 @@ const OPTIMIZED_HOSTS = [
   "plus.unsplash.com",
   "source.unsplash.com",
   "i.pravatar.cc",
+  "res.cloudinary.com",
 ];
 
 function isOptimizableSrc(src: string): boolean {
