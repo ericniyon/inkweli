@@ -7,6 +7,12 @@ import LoginView from "@/components/LoginView";
 import { PENDING_PLAN_STORAGE_KEY } from "@/constants";
 
 const ERROR_MESSAGE = "Sign-in failed. Please try again.";
+const ERROR_BY_CODE: Record<string, string> = {
+  OAuthEmailRequired:
+    "We couldn't receive your email from Apple or Google. Try signing in with email and password instead, or allow email sharing in your Apple/Google account.",
+  OAuthAccountNotVerified:
+    "This Google account doesn't have a verified email. Verify your email with Google and try again.",
+};
 
 function normalizeInternalPath(input: string | null): string | null {
   if (!input) return null;
@@ -43,12 +49,14 @@ function LoginPageContent() {
           : "/dashboard";
 
   const errorCode = searchParams.get("error");
-  const initialError = errorCode ? ERROR_MESSAGE : null;
+  const initialError =
+    errorCode !== null ? ERROR_BY_CODE[errorCode ?? ""] ?? ERROR_MESSAGE : null;
 
   return (
     <div className="w-full flex-1 flex flex-col items-stretch justify-center px-4 sm:px-6 lg:px-10 py-8 lg:py-12 animate-fade-up min-h-[calc(100vh-140px)]">
       <LoginView
         initialError={initialError}
+        oauthCallbackUrl={defaultPath}
         onLogin={(user) => {
           setUser(user);
           if (user.role === "ADMIN") {

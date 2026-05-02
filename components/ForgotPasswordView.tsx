@@ -74,7 +74,7 @@ const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({ onBackToLogin }
           </p>
         </div>
         <p className="relative z-[1] mt-8 lg:mt-0 text-medium-small italic text-slate-400 border-t border-white/10 pt-6 lg:pt-8">
-          &ldquo;Knowledge that Wins You Markets.&rdquo;
+          &ldquo;Insights Beyond the Obvious.&rdquo;
         </p>
       </aside>
 

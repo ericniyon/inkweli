@@ -38,9 +38,13 @@ function RegisterPageInner() {
           ? `/login?callbackUrl=${encodeURIComponent(callbackUrlParam)}`
           : "/login";
 
+  const oauthCallbackUrl = callbackUrlParam ?? "/dashboard";
+
   return (
     <div className="w-full flex-1 flex flex-col items-stretch justify-center px-4 sm:px-6 lg:px-10 py-8 lg:py-12 animate-fade-up min-h-[calc(100vh-140px)]">
       <RegisterView
+        showOAuth={!paymentRef}
+        oauthCallbackUrl={oauthCallbackUrl}
         onRegister={(user) => {
           setUser(user);
           try {

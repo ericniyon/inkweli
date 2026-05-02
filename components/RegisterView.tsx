@@ -6,6 +6,7 @@ import { signIn } from 'next-auth/react';
 import { AlertCircle, ArrowLeft, Loader2, Lock, Mail, User } from 'lucide-react';
 import { User as AppUser } from '../types';
 import Logo from './Logo';
+import OAuthSignInButtons from './OAuthSignInButtons';
 
 const PENDING_REGISTRATION_KEY = 'thinkup_pending_registration';
 
@@ -36,6 +37,10 @@ export function clearPendingRegistration(): void {
 interface RegisterViewProps {
   onRegister: (user: AppUser) => void;
   onLogin: () => void;
+  /** Redirect after OAuth signup (Google / Apple). */
+  oauthCallbackUrl?: string;
+  /** Hide social signup when user must complete email/password (e.g. claim a payment). */
+  showOAuth?: boolean;
   /** Called after saving registration data; user must complete payment to finish. */
   onProceedToPayment?: () => void;
   /** After external payment (no email on webhook): user must finish signup here; POST includes this ref. */
@@ -45,6 +50,8 @@ interface RegisterViewProps {
 const RegisterView: React.FC<RegisterViewProps> = ({
   onRegister,
   onLogin,
+  oauthCallbackUrl = '/dashboard',
+  showOAuth = true,
   onProceedToPayment,
   forcedPaymentReference,
 }) => {
@@ -147,7 +154,7 @@ const RegisterView: React.FC<RegisterViewProps> = ({
           </p>
         </div>
         <p className="relative z-[1] mt-8 lg:mt-0 text-medium-small italic text-slate-400 border-t border-white/10 pt-6 lg:pt-8">
-          &ldquo;Knowledge that Wins You Markets.&rdquo;
+          &ldquo;Insights Beyond the Obvious.&rdquo;
         </p>
       </aside>
 
@@ -211,6 +218,10 @@ const RegisterView: React.FC<RegisterViewProps> = ({
               <span>{error}</span>
             </div>
           )}
+
+          {showOAuth && !forcedPaymentReference ? (
+            <OAuthSignInButtons callbackUrl={oauthCallbackUrl} variant="primary" className="mb-8" />
+          ) : null}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">

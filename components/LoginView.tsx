@@ -6,10 +6,13 @@ import { signIn } from 'next-auth/react';
 import { AlertCircle, ArrowLeft, Loader2, Lock, Mail } from 'lucide-react';
 import { User } from '../types';
 import Logo from './Logo';
+import OAuthSignInButtons from './OAuthSignInButtons';
 
 interface LoginViewProps {
   /** Error message from URL to show on load */
   initialError?: string | null;
+  /** Redirect after OAuth (Google / Apple); should match password success path. */
+  oauthCallbackUrl?: string;
   onLogin: (user: User) => void;
   onRegister: () => void;
   onForgotPassword: () => void;
@@ -17,6 +20,7 @@ interface LoginViewProps {
 
 const LoginView: React.FC<LoginViewProps> = ({
   initialError,
+  oauthCallbackUrl = '/dashboard',
   onLogin,
   onRegister,
   onForgotPassword,
@@ -93,7 +97,7 @@ const LoginView: React.FC<LoginViewProps> = ({
           </p>
         </div>
         <p className="relative z-[1] mt-8 lg:mt-0 text-medium-small italic text-slate-400 border-t border-white/10 pt-6 lg:pt-8">
-          &ldquo;Knowledge that Wins You Markets.&rdquo;
+          &ldquo;Insights Beyond the Obvious.&rdquo;
         </p>
       </aside>
 
@@ -116,7 +120,7 @@ const LoginView: React.FC<LoginViewProps> = ({
           <header className="mb-10">
             <h2 className="text-medium-h1 font-black text-slate-900 tracking-tight">Sign in</h2>
             <p className="mt-2 text-medium-meta text-slate-600">
-              Use the email and password for your ThinkUp account.
+              Sign in with Google or Apple, or use your ThinkUp email and password.
             </p>
           </header>
 
@@ -129,6 +133,8 @@ const LoginView: React.FC<LoginViewProps> = ({
               <span>{error}</span>
             </div>
           )}
+
+          <OAuthSignInButtons callbackUrl={oauthCallbackUrl} variant="primary" className="mb-8" />
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
