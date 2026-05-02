@@ -44,6 +44,7 @@ export async function userHasFullReadAccessToArticle(
       userId,
       articleId,
       status: "ACTIVE",
+      planId: "plan_per_article",
     },
     select: { id: true },
   });

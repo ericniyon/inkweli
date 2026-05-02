@@ -167,14 +167,8 @@ export async function createUrubutuTransactionAndInitiate(args: {
   const { canonicalGatewayPlanId, price: planPrice, currency: planCurrency, tierForTransaction, clientPlanId } =
     resolved;
 
-  // Use plan-specific merchant code if available
-  let finalMerchantCode = merchantCode;
-  if (canonicalGatewayPlanId === "plan_annual") {
-    const annualMerchantCode = process.env.URUBUTOPAY_MERCHANT_CODE_ANNUAL?.trim();
-    if (annualMerchantCode) {
-      finalMerchantCode = annualMerchantCode;
-    }
-  }
+  // Use single merchant code for both plans
+  const finalMerchantCode = merchantCode;
 
   const pwlSlug = getServiceCodeForPlan(canonicalGatewayPlanId);
   const gatewayServiceCode = getInitiateGatewayServiceCode(canonicalGatewayPlanId);
@@ -209,8 +203,12 @@ export async function createUrubutuTransactionAndInitiate(args: {
 
   // Use production base URL for wallet payment redirects
   const productionBaseUrl = "https://urubutopay.rw";
-  // Use working service code for redirect URL
-  const redirectPwlSlug = "per-article-package-1777494222439";
+  // Align annual with per-article: wallet redirect uses the configured PWL slug for annual only;
+  // per-article stays on the literal fallback slug (same as before).
+  const redirectPwlSlug =
+    canonicalGatewayPlanId === "plan_annual"
+      ? pwlSlug
+      : "per-article-package-1777494222439";
   const redirectionPwl = `${productionBaseUrl}/pwl/${redirectPwlSlug}?pwlId=${redirectPwlSlug}`;
   const redirectionOutbound =
     args.channelName === "CARD" ? appReturnRedirectionUrl : redirectionPwl;
@@ -219,14 +217,13 @@ export async function createUrubutuTransactionAndInitiate(args: {
   // For plan_per_article, use custom amount if provided, otherwise use plan price
   const amt = args.amount !== undefined ? args.amount : planPrice;
   const payerEmailStr = typeof args.payerEmail === "string" ? args.payerEmail.trim() : "";
-
-  // Use the correct service codes for each plan
-  const finalServiceCode = canonicalGatewayPlanId === "plan_annual"
-    ? "annual-package-1777494294743"  // Use verified working service code for annual plan
-    : gatewayServiceCode; // Use initiate gateway service code for per-article
-  const finalPwlSlug = canonicalGatewayPlanId === "plan_per_article"
-    ? getServiceCodeForPlan("plan_per_article") || "per-article-package-1777494222439"
-    : "annual-package-1777494294743"; // Use verified working service code for annual plan
+  // Mirror per-article: `paymentLinkId` / `service_code` come from getServiceCodeForPlan +
+  // getInitiateGatewayServiceCode (env may set a distinct initiate code, e.g. subscription-xxxx).
+  const finalServiceCode = gatewayServiceCode;
+  const finalPwlSlug =
+    canonicalGatewayPlanId === "plan_per_article"
+      ? getServiceCodeForPlan("plan_per_article") || "per-article-package-1777494222439"
+      : pwlSlug;
 
   const params: InitiatePaymentParams = {
     currency: planCurrency || "RWF",
@@ -238,6 +235,7 @@ export async function createUrubutuTransactionAndInitiate(args: {
     payer_phone_number: phoneNorm,
     payer_to_be_charged: "YES",
     paymentLinkId: finalPwlSlug,
+    ...(configuredPaymentLinkId ? { payment_link_id: configuredPaymentLinkId } : {}),
     payment_channel: paymentChannel,
     payment_channel_name: args.channelName,
     redirection_url: redirectionOutbound,
@@ -246,8 +244,9 @@ export async function createUrubutuTransactionAndInitiate(args: {
     amount: amt,
     channel_name: args.channelName,
     transaction_id: transactionId,
-    ...(configuredPaymentLinkId ? { payment_link_id: configuredPaymentLinkId } : {}),
-    ...(configuredServiceId ? { service_id: configuredServiceId } : {}),
+    ...(configuredServiceId && configuredServiceId !== finalServiceCode
+      ? { service_id: configuredServiceId }
+      : {}),
   };
 
   const tx = await prisma.urubutoPayTransaction.create({

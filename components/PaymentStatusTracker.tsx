@@ -38,24 +38,28 @@ export default function PaymentStatusTracker({
           const data = JSON.parse(event.data);
           
           switch (data.type) {
-            case 'status_update':
+            case 'status_update': {
+              const st = typeof data.status === "string" ? data.status : "";
+              const success = ["SUCCESS", "COMPLETED", "VALID"].includes(st);
+              const failed = ["FAILED", "CANCELED", "REVERSED"].includes(st);
               setPaymentStatus({
                 transactionId: data.transactionId,
-                status: data.status,
-                message: getStatusMessage(data.status),
+                status: st,
+                message: getStatusMessage(st),
                 timestamp: data.timestamp,
-                isLoading: false,
-                isSuccess: ['SUCCESS', 'COMPLETED', 'VALID'].includes(data.status),
-                isError: ['FAILED', 'CANCELED', 'REVERSED'].includes(data.status),
+                isLoading: !success && !failed,
+                isSuccess: success,
+                isError: failed,
               });
 
-              if (data.isSuccess) {
+              if (success) {
                 onPaymentComplete?.({ isSuccess: true, transactionId: data.transactionId });
                 setTimeout(() => setIsVisible(false), 3000);
-              } else if (data.isError) {
+              } else if (failed) {
                 setTimeout(() => setIsVisible(false), 5000);
               }
               break;
+            }
               
             case 'error':
               setPaymentStatus(prev => ({

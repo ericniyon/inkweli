@@ -276,9 +276,15 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, articles, onArticleClic
                     <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
                       Story access
                     </p>
+                    <p className="text-xs text-slate-500 mb-3">
+                      Only stories you have unlocked with a{' '}
+                      <span className="font-semibold text-slate-700">successful</span> per-article payment
+                      appear here — not pending checkout or failed attempts.
+                    </p>
                     {perArticleUnlocks.length === 0 ? (
                       <p className="text-sm text-slate-600">
-                        No story is linked to your account yet. Per-article payments started from an article page are listed here.
+                        No paid unlocks yet. Start checkout from an article page; after UrubutuPay confirms, the story
+                        will show below.
                       </p>
                     ) : (
                       <ul className="space-y-2">

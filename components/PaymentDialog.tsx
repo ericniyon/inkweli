@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { getPendingRegistration } from "@/components/RegisterView";
+import PaymentSuccessDialog from "./PaymentSuccessDialog";
 
 export interface PlanForPayment {
   id: string;
@@ -71,6 +72,10 @@ export default function PaymentDialog({
   );
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paymentSuccessDialog, setPaymentSuccessDialog] = useState<{
+    isOpen: boolean;
+    reference: string;
+  }>({ isOpen: false, reference: "" });
 
   const pending = getPendingRegistration();
   const payerName = payerNameOverride ?? pending?.name ?? "";
@@ -184,11 +189,13 @@ export default function PaymentDialog({
       // For wallet payments (MOMO/AIRTEL_MONEY), no redirect URL means payment was initiated
       // User should complete payment on their phone
       if (channel === "MOMO" || channel === "AIRTEL_MONEY") {
-        if (ref) setPendingPaymentRef(ref, plan.id);
+        const referenceText = ref ?? "";
+        if (referenceText) setPendingPaymentRef(referenceText, plan.id);
         setProcessing(false);
+        // Close payment sheet first, then show success — PaymentSuccessDialog must stay mounted
+        // after isOpen goes false (see render guard below).
         onClose();
-        // Show success message or redirect to a status page
-        alert(`Payment initiated! Please complete the payment on your phone. Reference: ${ref}`);
+        setPaymentSuccessDialog({ isOpen: true, reference: referenceText });
         return;
       }
 
@@ -200,7 +207,7 @@ export default function PaymentDialog({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen && !paymentSuccessDialog.isOpen) return null;
 
   const amountLabel =
     plan?.interval === "year"
@@ -210,7 +217,18 @@ export default function PaymentDialog({
         : "RWF";
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+    <>
+      <PaymentSuccessDialog
+        isOpen={paymentSuccessDialog.isOpen}
+        onClose={() => setPaymentSuccessDialog({ isOpen: false, reference: "" })}
+        reference={paymentSuccessDialog.reference}
+        onSettled={(outcome) => {
+          if (outcome === "success") void onPaymentSuccess();
+        }}
+      />
+
+      {isOpen ? (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
       <div
         className="absolute inset-0"
         aria-hidden
@@ -335,5 +353,7 @@ export default function PaymentDialog({
         </div>
       </div>
     </div>
+      ) : null}
+    </>
   );
 }

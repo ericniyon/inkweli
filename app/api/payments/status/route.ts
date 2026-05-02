@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getTransactionStatus, getMerchantCode } from "@/lib/urubutopay";
+import { reconcileUrubutoTransactionFromGateway } from "@/lib/urubutopay-gateway-reconcile";
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,37 +31,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let status = transaction.status;
-    let message = "Payment status retrieved";
-
-    // If status is pending, check with UrubutoPay API
-    if (status === "PENDING" || status === "PROCESSING") {
-      try {
-        const merchantCode = getMerchantCode();
-        if (merchantCode) {
-          const urubutoStatus = await getTransactionStatus({
-            merchant_code: merchantCode,
-            transaction_id: transactionId,
-          });
-          if (urubutoStatus?.data?.transaction_status) {
-            status = urubutoStatus.data.transaction_status;
-            message = urubutoStatus.message || message;
-            
-            // Update our database with the latest status
-            await prisma.urubutoPayTransaction.update({
-              where: { id: transaction.id },
-              data: { 
-                status,
-                updatedAt: new Date(),
-              },
-            });
-          }
-        }
-      } catch (error) {
-        console.error("Failed to check UrubutoPay status:", error);
-        // Continue with database status if API call fails
-      }
-    }
+    const status = await reconcileUrubutoTransactionFromGateway({
+      id: transaction.id,
+      transactionId: transaction.transactionId,
+      status: transaction.status,
+    });
+    const message = "Payment status retrieved";
 
     return NextResponse.json({
       transactionId: transaction.transactionId,
