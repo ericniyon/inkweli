@@ -64,7 +64,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlanConfig[] = [
     id: 'plan_per_article',
     tier: SubscriptionTier.ONE_ARTICLE,
     name: 'Per Article Package',
-    price: 10000,
+    price: 2000,
     currency: 'RWF',
     interval: 'article',
     paymentUrl: URUBUTOPAY_LINKS.perArticle,

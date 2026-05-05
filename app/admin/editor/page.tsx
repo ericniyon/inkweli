@@ -6,8 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Article, Category } from "@/types";
 
-import { GoogleGenAI } from "@google/genai";
-
 const DRAFT_STORAGE_KEY = (id: string | null) => `thinkup_draft_${id || "new"}`;
 const DRAFT_DEBOUNCE_MS = 1200;
 
@@ -157,12 +155,22 @@ function StoryEditorContent() {
     if (!plainText) return;
     setIsGenerating(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: `Generate a compelling one-sentence SEO excerpt for this article content: ${plainText.substring(0, 1000)}`,
+      const res = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt:
+            "Generate a compelling one-sentence SEO excerpt for this article. Output only the excerpt, no quotes or prefix.",
+          title: editingArticle.title ?? "",
+          content: plainText.substring(0, 1000),
+        }),
       });
-      const text = (response as { text?: string })?.text?.trim();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error(data?.error || res.statusText);
+        return;
+      }
+      const text = typeof data?.text === "string" ? data.text.trim() : "";
       if (text) setEditingArticle((prev) => ({ ...prev, excerpt: text }));
     } catch (e) {
       console.error(e);

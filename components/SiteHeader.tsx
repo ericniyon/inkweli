@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, Menu, X } from "lucide-react";
@@ -24,6 +25,33 @@ export default function SiteHeader({
   const { showLogoInHeader, stickyHeader } = useSiteLayout();
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const accountMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const [accountMenuCoords, setAccountMenuCoords] = useState<{ top: number; right: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!userMenuOpen) {
+      setAccountMenuCoords(null);
+      return;
+    }
+    const el = accountMenuButtonRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      setAccountMenuCoords({
+        top: rect.bottom + 8,
+        right: Math.max(8, window.innerWidth - rect.right),
+      });
+    };
+
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [userMenuOpen]);
   const isLanding = variant === "landing";
   const navBg = "bg-white/95 backdrop-blur-md border-b border-slate-100";
 
@@ -77,11 +105,13 @@ export default function SiteHeader({
       ) : (
         <div className="hidden md:block relative">
           <button
+            ref={accountMenuButtonRef}
             type="button"
             onClick={() => setUserMenuOpen((o) => !o)}
             className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-sm font-bold overflow-hidden border border-slate-100"
             aria-label="Account menu"
             aria-expanded={userMenuOpen}
+            aria-haspopup="true"
           >
             {user.avatar ? (
               <img src={user.avatar} alt="" className="w-full h-full object-cover" />
@@ -89,30 +119,57 @@ export default function SiteHeader({
               <span>{user.name?.charAt(0)?.toUpperCase() ?? "?"}</span>
             )}
           </button>
-          {userMenuOpen && (
-            <>
-              <div className="fixed inset-0 z-[98]" aria-hidden onClick={() => setUserMenuOpen(false)} />
-              <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-100 rounded-2xl shadow-xl py-3 z-[100]">
-                <div className="px-4 py-2 border-b border-slate-50">
-                  <p className="font-charter text-sm font-black text-slate-900 truncate">{user.name}</p>
-                  <p className="font-charter text-xs text-slate-400 truncate">{user.email}</p>
-                </div>
-                <Link href="/dashboard" onClick={() => setUserMenuOpen(false)} className="font-charter block w-full text-left px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Dashboard</Link>
-                <Link href="/" onClick={() => setUserMenuOpen(false)} className="font-charter block w-full text-left px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Home</Link>
-                {user.role === "ADMIN" && (
-                  <Link href="/admin" onClick={() => setUserMenuOpen(false)} className="font-charter block w-full text-left px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Write</Link>
-                )}
-                <div className="h-px bg-slate-50 my-2" />
-                <button
-                  type="button"
-                  onClick={() => { setUserMenuOpen(false); logout(); router.push("/"); }}
-                  className="font-charter w-full text-left px-4 py-2 text-sm font-bold text-red-500 hover:bg-red-50"
+          {userMenuOpen &&
+            accountMenuCoords &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <>
+                <div
+                  className="fixed inset-0 z-[160] bg-transparent"
+                  aria-hidden
+                  onClick={() => setUserMenuOpen(false)}
+                />
+                <div
+                  role="menu"
+                  className="fixed z-[161] w-56 min-w-[14rem] bg-white border border-slate-100 rounded-2xl shadow-xl py-3"
+                  style={{ top: accountMenuCoords.top, right: accountMenuCoords.right }}
                 >
-                  Sign out
-                </button>
-              </div>
-            </>
-          )}
+                  <div className="px-4 py-2 border-b border-slate-50">
+                    <p className="font-charter text-sm font-black text-slate-900 truncate">{user.name}</p>
+                    <p className="font-charter text-xs text-slate-400 truncate">{user.email}</p>
+                  </div>
+                  <Link
+                    href="/dashboard"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="font-charter block w-full text-left px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    Dashboard
+                  </Link>
+                  <Link href="/" onClick={() => setUserMenuOpen(false)} className="font-charter block w-full text-left px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                    Home
+                  </Link>
+                  {user.role === "ADMIN" && (
+                    <Link href="/admin" onClick={() => setUserMenuOpen(false)} className="font-charter block w-full text-left px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                      Write
+                    </Link>
+                  )}
+                  <div className="h-px bg-slate-50 my-2" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      logout();
+                      router.push("/");
+                    }}
+                    className="font-charter w-full text-left px-4 py-2 text-sm font-bold text-red-500 hover:bg-red-50"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              </>,
+              document.body,
+            )}
         </div>
       )}
       <button

@@ -10,8 +10,8 @@ async function planIsStoryUnlock(planId: string): Promise<boolean> {
 
 /**
  * Whether the viewer may load this article body in full:
- * unlimited (annual/full access), author viewing own draft/published surface, purchased unlock for this story,
- * or staff roles.
+ * unlimited (annual/full access), author viewing own story, purchased unlock for this story,
+ * or **staff** (ADMIN / EDITOR) — staff always get full text on the public reader without payment.
  */
 export async function userHasFullReadAccessToArticle(
   userId: string | null | undefined,

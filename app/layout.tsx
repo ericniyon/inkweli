@@ -2,10 +2,14 @@ import type { Metadata } from "next";
 import { AuthProvider } from "@/lib/auth-context";
 import { SiteLayoutProvider } from "@/lib/site-layout-context";
 import SessionProviderWrapper from "@/components/SessionProviderWrapper";
+import ClientPathDocumentTitle from "@/components/ClientPathDocumentTitle";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "usethinkup | Premium Publishing",
+  title: {
+    default: `Home | usethinkup`,
+    template: `%s | usethinkup`,
+  },
   description: "Discover stories, thinking, and expertise from writers on any topic.",
   icons: {
     icon: "/icon.png",
@@ -31,7 +35,10 @@ export default function RootLayout({
       <body className="antialiased font-charter">
         <SessionProviderWrapper>
           <AuthProvider>
-            <SiteLayoutProvider>{children}</SiteLayoutProvider>
+            <SiteLayoutProvider>
+              <ClientPathDocumentTitle />
+              {children}
+            </SiteLayoutProvider>
           </AuthProvider>
         </SessionProviderWrapper>
       </body>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
+import { buildArticlePreviewHtml } from "@/lib/article-paywall-preview";
 import { userHasFullReadAccessToArticle } from "@/lib/article-access";
 
 export async function GET(
@@ -64,12 +65,16 @@ export async function GET(
       articleAuthorId: article.authorId,
     });
 
+    const contentPayload = readerHasFullAccess
+      ? article.content
+      : buildArticlePreviewHtml(article.content, id);
+
     const response = NextResponse.json({
       id: article.id,
       title: article.title,
       slug: article.slug,
       excerpt: article.excerpt,
-      content: article.content,
+      content: contentPayload,
       authorId: article.authorId,
       authorName: article.author.name,
       authorAvatar: article.author.avatar ?? undefined,
