@@ -489,19 +489,26 @@ export async function createUrubutuTransactionAndInitiate(args: {
   }
 
   const data = (res.data ?? {}) as Record<string, unknown>;
+  const topLevelTransactionStatus =
+    typeof (res as { transaction_status?: unknown }).transaction_status === "string"
+      ? (res as { transaction_status?: unknown }).transaction_status
+      : undefined;
   const transactionStatusRaw =
     typeof data.transaction_status === "string"
       ? data.transaction_status
-      : typeof (res as { transaction_status?: unknown }).transaction_status === "string"
-        ? ((res as { transaction_status: string }).transaction_status as string)
+      : typeof topLevelTransactionStatus === "string"
+        ? topLevelTransactionStatus
         : "INITIATED";
   const transactionStatus = transactionStatusRaw.trim().toUpperCase();
   if (transactionStatus === "FAILED") {
     const walletChannel = args.channelName === "MOMO" || args.channelName === "AIRTEL_MONEY";
+    const topLevelError =
+      typeof (res as { error?: unknown }).error === "string"
+        ? (res as { error?: unknown }).error
+        : undefined;
     const providerError =
-      typeof (res as { error?: unknown }).error === "string" &&
-      (res as { error: string }).error.trim()
-        ? (res as { error: string }).error.trim()
+      typeof topLevelError === "string" && topLevelError.trim()
+        ? topLevelError.trim()
         : null;
     const providerMessage =
       typeof res.message === "string" && res.message.trim() ? res.message.trim() : null;
