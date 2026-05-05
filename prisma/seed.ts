@@ -8,7 +8,7 @@ const ADMIN_SEED_PASSWORD = "admin123";
 async function main() {
   const adminPasswordHash = hashPassword(ADMIN_SEED_PASSWORD);
 
-  // Admin login: admin@thinkup.com / admin123. Admins see paywall until they have a paid subscription (tier UNLIMITED).
+  // Admin login: admin@thinkup.com / admin123. ADMIN/EDITOR users read all published articles in full without paying (see lib/article-access.ts).
   await prisma.user.upsert({
     where: { id: "auth_admin" },
     create: {
@@ -93,7 +93,7 @@ async function main() {
       id: "plan_per_article",
       tier: "ONE_ARTICLE",
       name: "Just this article",
-      price: 10000,
+      price: 2000,
       interval: "article",
       features: [
         "Unlock this story in full, including future updates and discussion.",
@@ -103,7 +103,7 @@ async function main() {
     update: {
       tier: "ONE_ARTICLE",
       name: "Just this article",
-      price: 10000,
+      price: 2000,
       interval: "article",
       features: [
         "Unlock this story in full, including future updates and discussion.",

@@ -8,10 +8,7 @@ import GeminiAssistant from './GeminiAssistant';
 import ResponsesDrawer from './ResponsesDrawer';
 import HighlightDrawer from './HighlightDrawer';
 import { RelatedArticleCardCompact } from './RelatedArticleCard';
-
-/** Min and max paragraphs shown for free before the paywall (4–5) */
-const FREE_PREVIEW_PARAGRAPHS_MIN = 1;
-const FREE_PREVIEW_PARAGRAPHS_MAX = 2;
+import { buildArticlePreviewHtml } from '@/lib/article-paywall-preview';
 
 /** Rows from GET /api/subscription-plans */
 type SubscriptionPlanApi = {
@@ -110,57 +107,6 @@ function buildPaywallFallbacks(): { fullAccess: PaywallCardContent; perArticle: 
       description: 'Unlock this story in full, including future updates and discussion.',
     },
   };
-}
-
-/** Stable per-article value in [min, max] so different articles can show 2, 3, or 4 free paragraphs */
-function getFreePreviewParagraphCount(articleId: string): number {
-  const n = FREE_PREVIEW_PARAGRAPHS_MAX - FREE_PREVIEW_PARAGRAPHS_MIN + 1;
-  const hash = articleId.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
-  return FREE_PREVIEW_PARAGRAPHS_MIN + (Math.abs(hash) % n);
-}
-
-/** True if the HTML block has meaningful text content (not just images/tags) */
-function hasTextContent(html: string): boolean {
-  const text = html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-  return text.length >= 10;
-}
-
-/** Returns the first N text paragraphs; images and image-only blocks are not counted as paragraphs. */
-function getFirstNParagraphsHtml(html: string, n: number): string {
-  const trimmed = (html || '').trim();
-  if (!trimmed) return '';
-
-  const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
-  let textParagraphCount = 0;
-  let endIndex = 0;
-
-  for (const m of trimmed.matchAll(pRegex)) {
-    const fullMatch = m[0];
-    const inner = m[1] || '';
-    if (hasTextContent(inner)) {
-      textParagraphCount++;
-      endIndex = m.index! + fullMatch.length;
-      if (textParagraphCount >= n) break;
-    }
-  }
-
-  if (textParagraphCount >= n && endIndex > 0) {
-    return trimmed.slice(0, endIndex);
-  }
-
-  if (textParagraphCount > 0) {
-    return trimmed.slice(0, endIndex || trimmed.length);
-  }
-
-  // No <p> tags or no text in them: plain text by double newlines
-  const blocks = trimmed.split(/\n\s*\n/).filter((b) => b.trim().length > 0);
-  if (blocks.length > 0) {
-    const firstN = blocks.slice(0, n);
-    return firstN.map((block) => `<p>${block.trim().replace(/\n/g, '<br>')}</p>`).join('');
-  }
-
-  const fallback = trimmed.slice(0, 1200).trim();
-  return fallback ? `<p>${fallback.replace(/\n/g, '<br>')}</p>` : trimmed;
 }
 
 /** Decode common HTML entities so highlight plain text can match content */
@@ -512,13 +458,8 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
     }
   };
 
-  const freePreviewParagraphs = useMemo(
-    () => getFreePreviewParagraphCount(article.id),
-    [article.id]
-  );
-
   const highlightedContent = useMemo(() => {
-    let content = isLimitedAccess ? getFirstNParagraphsHtml(article.content, freePreviewParagraphs) : article.content;
+    let content = isLimitedAccess ? buildArticlePreviewHtml(article.content, article.id) : article.content;
     // Preserve newlines/line breaks (HTML collapses \n when parsed)
     content = content.replace(/\n/g, '<br>');
     content = decodeHtmlEntities(content);
@@ -558,7 +499,7 @@ const ArticleReader: React.FC<ArticleReaderProps> = ({
     });
     
     return content;
-  }, [article.content, highlights, isLimitedAccess, freePreviewParagraphs]);
+  }, [article.content, article.id, highlights, isLimitedAccess]);
 
   const handleContentClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;

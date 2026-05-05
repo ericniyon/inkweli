@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { CreditCard } from "lucide-react";
 import { getPendingRegistration } from "@/components/RegisterView";
 import PaymentSuccessDialog from "./PaymentSuccessDialog";
 
@@ -54,6 +55,77 @@ export function getPendingPaymentRef(): { reference: string; planId: string } | 
 }
 
 type CheckoutChannel = "MOMO" | "AIRTEL_MONEY" | "CARD";
+const CUSTOM_WALLET_FAILURE_MESSAGE =
+  "Payment failed. Please check your wallet balance, then confirm your wallet number/network and try again.";
+
+function validateBillingPhoneForChannel(
+  phoneDigits: string,
+  checkoutChannel: CheckoutChannel,
+): string | null {
+  if (!/^\d{10}$/.test(phoneDigits)) {
+    return "Billing phone must be exactly 10 digits.";
+  }
+  if (checkoutChannel === "MOMO" && !/^07(?:8|9)\d{7}$/.test(phoneDigits)) {
+    return "MTN MoMo number must start with 078 or 079.";
+  }
+  if (checkoutChannel === "AIRTEL_MONEY" && !/^07(?:2|3)\d{7}$/.test(phoneDigits)) {
+    return "Airtel Money number must start with 072 or 073.";
+  }
+  return null;
+}
+
+function normalizeDialogErrorMessage(
+  rawError: unknown,
+  checkoutChannel: CheckoutChannel,
+): string | null {
+  if (typeof rawError !== "string") return null;
+  const msg = rawError.trim();
+  if (!msg) return null;
+  const lower = msg.toLowerCase();
+  const walletChannel = checkoutChannel === "MOMO" || checkoutChannel === "AIRTEL_MONEY";
+  if (
+    walletChannel &&
+    (lower.includes("wallet prompt was not sent") ||
+      lower.includes("transaction failed") ||
+      lower.includes("transaction_status") ||
+      lower.includes("insufficient"))
+  ) {
+    return CUSTOM_WALLET_FAILURE_MESSAGE;
+  }
+  return msg;
+}
+
+function PaymentMethodChip({
+  selected,
+  onClick,
+  children,
+  ariaLabel,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      aria-label={ariaLabel}
+      onClick={onClick}
+      className={[
+        "flex flex-1 min-h-[56px] rounded-xl border-0 px-2 py-1.5 transition",
+        selected
+          ? "bg-slate-100 ring-2 ring-slate-900 ring-offset-2 ring-offset-white"
+          : "bg-slate-50 hover:bg-slate-100",
+      ].join(" ")}
+    >
+      <span className="flex h-11 w-full min-w-0 items-center justify-center overflow-hidden rounded-md">
+        {children}
+      </span>
+    </button>
+  );
+}
 
 export default function PaymentDialog({
   isOpen,
@@ -82,16 +154,41 @@ export default function PaymentDialog({
   const payerEmail = payerEmailOverride ?? pending?.email ?? "";
   const walletChannel = channel === "MOMO" || channel === "AIRTEL_MONEY";
 
+  const handlePhoneInputChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, "").slice(0, 10);
+    if (!walletChannel) {
+      setPhoneNumber(digits);
+      return;
+    }
+    if (digits.length >= 3) {
+      if (channel === "MOMO" && !/^07(?:8|9)/.test(digits)) {
+        return;
+      }
+      if (channel === "AIRTEL_MONEY" && !/^07(?:2|3)/.test(digits)) {
+        return;
+      }
+    }
+    setPhoneNumber(digits);
+  };
+
   const handlePay = async () => {
     if (!plan) return;
     setError(null);
     setProcessing(true);
 
-    const phone = phoneNumber.trim().replace(/\s/g, "");
+    const phone = phoneNumber.replace(/\D/g, "");
     if (!phone) {
       setError("Phone number is required (used for billing and wallet flows).");
       setProcessing(false);
       return;
+    }
+    if (walletChannel) {
+      const phoneError = validateBillingPhoneForChannel(phone, channel);
+      if (phoneError) {
+        setError(phoneError);
+        setProcessing(false);
+        return;
+      }
     }
 
     try {
@@ -166,7 +263,16 @@ export default function PaymentDialog({
       }
 
       if (!res.ok) {
-        setError(data.error ?? "Payment could not be started. Please try again.");
+        const normalizedError = normalizeDialogErrorMessage(data.error, channel);
+        setError(normalizedError ?? "Payment could not be started. Please try again.");
+        setProcessing(false);
+        return;
+      }
+
+      // Check for wallet prompt error even with status 200
+      if (data.error && typeof data.error === "string") {
+        const normalizedError = normalizeDialogErrorMessage(data.error, channel);
+        setError(normalizedError ?? data.error);
         setProcessing(false);
         return;
       }
@@ -278,29 +384,53 @@ export default function PaymentDialog({
               </div>
 
               <p className="text-sm font-medium text-slate-700 mb-2">Payment method</p>
-              <div className="flex gap-2 mb-4">
-                {(["MOMO", "AIRTEL_MONEY", "CARD"] as const).map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setChannel(c)}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition ${
-                      channel === c
-                        ? "bg-slate-900 text-white"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    {c === "MOMO" ? "MoMo" : c === "AIRTEL_MONEY" ? "Airtel" : "Card"}
-                  </button>
-                ))}
+              <div className="flex gap-2 mb-4" role="radiogroup" aria-label="Payment method">
+                <PaymentMethodChip
+                  selected={channel === "MOMO"}
+                  onClick={() => setChannel("MOMO")}
+                  ariaLabel="MTN Mobile Money"
+                >
+                  <img
+                    src="/brands/mtn-momo.svg"
+                    alt=""
+                    width={70}
+                    height={40}
+                    className="h-full w-full object-cover object-center pointer-events-none"
+                    decoding="async"
+                    aria-hidden
+                  />
+                </PaymentMethodChip>
+                <PaymentMethodChip
+                  selected={channel === "AIRTEL_MONEY"}
+                  onClick={() => setChannel("AIRTEL_MONEY")}
+                  ariaLabel="Airtel Money"
+                >
+                  <img
+                    src="/brands/airtel-money.svg"
+                    alt=""
+                    width={70}
+                    height={40}
+                    className="h-full w-full object-cover object-center pointer-events-none"
+                    decoding="async"
+                    aria-hidden
+                  />
+                </PaymentMethodChip>
+                <div
+                  className="flex flex-1 min-h-[56px] items-center justify-center rounded-xl border-0 bg-slate-50 px-2 py-1.5 opacity-55 cursor-not-allowed select-none pointer-events-none"
+                  role="presentation"
+                  title="Card payment is not available yet"
+                >
+                  <span className="flex h-11 w-full items-center justify-center">
+                    <CreditCard className="h-8 w-12 text-slate-500 shrink-0" strokeWidth={1.5} aria-hidden />
+                  </span>
+                  <span className="sr-only">Card — unavailable</span>
+                </div>
               </div>
 
               <p className="text-sm text-slate-600 mb-4">
-                {channel === "CARD"
-                  ? "You’ll complete checkout on UrubutoPay’s hosted card page—we’ll send you back here when you’re done."
-                  : channel === "AIRTEL_MONEY"
-                    ? "You'll finish Airtel Money on the UrubutoPay page we open next. Use the billing phone below."
-                    : "You'll finish MTN MoMo on the UrubutoPay page we open next. Use the billing phone below."}
+                {channel === "AIRTEL_MONEY"
+                  ? "You'll finish Airtel Money on the UrubutoPay page we open next. Use the billing phone below."
+                  : "You'll finish MTN MoMo on the UrubutoPay page we open next. Use the billing phone below."}
               </p>
 
               <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -313,13 +443,17 @@ export default function PaymentDialog({
               <input
                 type="tel"
                 value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="0781234567"
+                onChange={(e) => handlePhoneInputChange(e.target.value)}
+                placeholder={channel === "AIRTEL_MONEY" ? "0721234567" : "0781234567"}
+                inputMode="numeric"
+                maxLength={10}
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent mb-4"
               />
 
               <p className="text-xs text-slate-500 mb-4">
-                After UrubutoPay confirms payment, your access follows the webhook — you can return via the link they provide once payment completes.
+                {channel === "AIRTEL_MONEY"
+                  ? "Use an Airtel Money number starting with 072 or 073. After UrubutoPay confirms payment, your access follows the webhook."
+                  : "Use an MTN MoMo number starting with 078 or 079. After UrubutoPay confirms payment, your access follows the webhook."}
               </p>
 
               {error && (

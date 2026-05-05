@@ -24,6 +24,94 @@ function normalizeRwPayerPhone(raw: string): string {
   return d;
 }
 
+function toRwLocalMsisdn(raw: string): string {
+  const d = raw.trim().replace(/\D/g, "");
+  if (!d) return d;
+  if (d.startsWith("250") && d.length >= 12) return `0${d.slice(3)}`;
+  if (d.startsWith("7") && d.length === 9) return `0${d}`;
+  return d;
+}
+
+function getCanonicalGatewayAmount(
+  canonicalGatewayPlanId: "plan_annual" | "plan_per_article",
+  fallback: number,
+): number {
+  const envOverrideRaw =
+    canonicalGatewayPlanId === "plan_annual"
+      ? process.env.URUBUTOPAY_GATEWAY_AMOUNT_ANNUAL?.trim()
+      : process.env.URUBUTOPAY_GATEWAY_AMOUNT_PER_ARTICLE?.trim();
+  const envOverride =
+    envOverrideRaw && /^-?\d+$/.test(envOverrideRaw)
+      ? Number.parseInt(envOverrideRaw, 10)
+      : NaN;
+  if (Number.isFinite(envOverride) && envOverride > 0) return Math.round(envOverride);
+  const plan = SUBSCRIPTION_PLANS.find((p) => p.id === canonicalGatewayPlanId);
+  const preferred =
+    typeof plan?.price === "number" && Number.isFinite(plan.price)
+      ? Math.round(plan.price)
+      : Math.round(fallback);
+  return preferred > 0 ? preferred : Math.max(1, Math.round(fallback));
+}
+
+function walletInitFailureMessageFromProvider(args: {
+  providerError?: string | null;
+  providerMessage?: string | null;
+  transactionStatus?: string | null;
+}): string {
+  const raw = `${args.providerError ?? ""} ${args.providerMessage ?? ""} ${args.transactionStatus ?? ""}`
+    .trim()
+    .toLowerCase();
+
+  if (
+    raw.includes("insufficient") ||
+    raw.includes("not enough balance") ||
+    raw.includes("low balance") ||
+    raw.includes("balance too low")
+  ) {
+    return "Insufficient wallet balance. Please top up and try again.";
+  }
+  if (
+    raw.includes("wrong pin") ||
+    raw.includes("invalid pin") ||
+    raw.includes("pin failed") ||
+    raw.includes("incorrect pin")
+  ) {
+    return "Incorrect wallet PIN. Please confirm your PIN and try again.";
+  }
+  if (
+    raw.includes("expired") ||
+    raw.includes("timeout") ||
+    raw.includes("time out") ||
+    raw.includes("timed out")
+  ) {
+    return "Wallet request timed out. Please try again.";
+  }
+  if (
+    raw.includes("rejected") ||
+    raw.includes("declined") ||
+    raw.includes("cancelled") ||
+    raw.includes("canceled")
+  ) {
+    return "Payment was cancelled or rejected on the wallet side.";
+  }
+  if (
+    raw.includes("not found") ||
+    raw.includes("invalid phone") ||
+    raw.includes("invalid msisdn") ||
+    raw.includes("unknown subscriber")
+  ) {
+    return "The wallet number is invalid or not active. Please check the number and try again.";
+  }
+  if (
+    raw.includes("network") ||
+    raw.includes("operator") ||
+    raw.includes("unreachable")
+  ) {
+    return "Wallet network is temporarily unavailable. Please try again in a moment.";
+  }
+  return "Mobile wallet prompt was not sent. Please confirm your wallet number/network and wallet balance, then try again.";
+}
+
 export function planIdToTier(planId: string): SubscriptionTier {
   if (planId === "plan_annual") return "UNLIMITED";
   if (planId === "plan_per_article") return "ONE_ARTICLE";
@@ -54,6 +142,27 @@ export async function resolveCheckoutPlan(planIdFromClient: string): Promise<
     }
   | { error: string }
 > {
+  const row = await prisma.subscriptionPlan.findUnique({
+    where: { id: planIdFromClient },
+  });
+
+  // DB is source of truth for editable prices (admin updates /api/subscription-plans).
+  if (row) {
+    const tierForTransaction = tierFromDbRow(row.tier);
+    const intervalLc = row.interval.trim().toLowerCase();
+    const canonicalGatewayPlanId =
+      intervalLc === "year" || tierForTransaction === "UNLIMITED"
+        ? "plan_annual"
+        : "plan_per_article";
+    return {
+      canonicalGatewayPlanId,
+      price: row.price,
+      currency: "RWF",
+      tierForTransaction,
+      clientPlanId: planIdFromClient,
+    };
+  }
+
   const fromConstants = SUBSCRIPTION_PLANS.find((p) => p.id === planIdFromClient);
   if (fromConstants) {
     const canonicalGatewayPlanId =
@@ -67,10 +176,6 @@ export async function resolveCheckoutPlan(planIdFromClient: string): Promise<
     };
   }
 
-  const row = await prisma.subscriptionPlan.findUnique({
-    where: { id: planIdFromClient },
-  });
-
   /** Aligned with `prisma/seed.ts` — used when the DB isn’t seeded but the UI still uses these ids */
   const SEEDED_FALLBACK: Record<
     string,
@@ -80,18 +185,14 @@ export async function resolveCheckoutPlan(planIdFromClient: string): Promise<
     plan_pro: { price: 20000, tier: "TWO_ARTICLES", interval: "month" },
   };
 
-  const rowOrFallback =
-    row ??
-    (() => {
-      const fb = SEEDED_FALLBACK[planIdFromClient];
-      return fb ? { tier: fb.tier, price: fb.price, interval: fb.interval } : null;
-    })();
+  const rowOrFallback = (() => {
+    const fb = SEEDED_FALLBACK[planIdFromClient];
+    return fb ? { tier: fb.tier, price: fb.price, interval: fb.interval } : null;
+  })();
 
   if (!rowOrFallback) return { error: "Invalid planId" };
 
-  const tierForTransaction = row
-    ? tierFromDbRow(row.tier)
-    : tierFromDbRow(String(rowOrFallback.tier));
+  const tierForTransaction = tierFromDbRow(String(rowOrFallback.tier));
 
   const intervalLc = rowOrFallback.interval.trim().toLowerCase();
   const canonicalGatewayPlanId =
@@ -214,8 +315,9 @@ export async function createUrubutuTransactionAndInitiate(args: {
     args.channelName === "CARD" ? appReturnRedirectionUrl : redirectionPwl;
 
   const phoneNorm = normalizeRwPayerPhone(args.phoneNumber);
-  // For plan_per_article, use custom amount if provided, otherwise use plan price
-  const amt = args.amount !== undefined ? args.amount : planPrice;
+  const phoneLocal = toRwLocalMsisdn(phoneNorm);
+  // Gateway products enforce canonical amounts; custom amount is ignored to prevent 409.
+  const amt = getCanonicalGatewayAmount(canonicalGatewayPlanId, planPrice);
   const payerEmailStr = typeof args.payerEmail === "string" ? args.payerEmail.trim() : "";
   // Mirror per-article: `paymentLinkId` / `service_code` come from getServiceCodeForPlan +
   // getInitiateGatewayServiceCode (env may set a distinct initiate code, e.g. subscription-xxxx).
@@ -238,9 +340,10 @@ export async function createUrubutuTransactionAndInitiate(args: {
     ...(configuredPaymentLinkId ? { payment_link_id: configuredPaymentLinkId } : {}),
     payment_channel: paymentChannel,
     payment_channel_name: args.channelName,
+    need_instant_wallet_settlement: "YES",
     redirection_url: redirectionOutbound,
     service_code: finalServiceCode,
-    phone_number: phoneNorm,
+    phone_number: phoneLocal || phoneNorm,
     amount: amt,
     channel_name: args.channelName,
     transaction_id: transactionId,
@@ -279,7 +382,70 @@ export async function createUrubutuTransactionAndInitiate(args: {
 
   let res;
   try {
-    res = await initiatePayment(params);
+    const attemptParams: InitiatePaymentParams[] = [params];
+    if (gatewayServiceCode && gatewayServiceCode !== finalPwlSlug) {
+      attemptParams.push({
+        ...params,
+        paymentLinkId: finalPwlSlug,
+        service_code: finalPwlSlug,
+      });
+      attemptParams.push({
+        ...params,
+        paymentLinkId: gatewayServiceCode,
+        service_code: gatewayServiceCode,
+      });
+    }
+
+    let selectedResponse: Awaited<ReturnType<typeof initiatePayment>> | null = null;
+    for (let i = 0; i < attemptParams.length; i++) {
+      const attempt = attemptParams[i];
+      const attemptResponse = await initiatePayment(attempt);
+      const providerMessage =
+        typeof attemptResponse.message === "string"
+          ? attemptResponse.message.toLowerCase()
+          : "";
+      const success = attemptResponse.status === 200 || attemptResponse.status === 201;
+      const transactionStatus =
+        typeof attemptResponse.data?.transaction_status === "string"
+          ? attemptResponse.data.transaction_status.trim().toUpperCase()
+          : "";
+      const failedWalletInit =
+        (attempt.payment_channel === "WALLET" ||
+          args.channelName === "MOMO" ||
+          args.channelName === "AIRTEL_MONEY") &&
+        transactionStatus === "FAILED";
+      if (success) {
+        if (failedWalletInit && i + 1 < attemptParams.length) {
+          console.warn("[urubutopay:initiate] Wallet returned FAILED on HTTP 200; retrying alternate service mapping", {
+            currentServiceCode: attempt.service_code,
+            nextServiceCode: attemptParams[i + 1]?.service_code,
+          });
+          continue;
+        }
+        selectedResponse = attemptResponse;
+        if (i > 0) {
+          console.log("[urubutopay:initiate] Recovered with fallback service mapping", {
+            originalServiceCode: params.service_code,
+            selectedServiceCode: attempt.service_code,
+          });
+        }
+        break;
+      }
+
+      const retryable =
+        i + 1 < attemptParams.length &&
+        (attemptResponse.status === 404 ||
+          (attemptResponse.status === 409 &&
+            (providerMessage.includes("service not found") ||
+              providerMessage.includes("service code does not match") ||
+              providerMessage.includes("pay the full amount"))));
+      if (!retryable) {
+        selectedResponse = attemptResponse;
+        break;
+      }
+    }
+
+    res = selectedResponse ?? (await initiatePayment(params));
     logUrubutuPayEvent("initiate", "provider_response", {
       transactionId,
       planId: canonicalGatewayPlanId,
@@ -323,11 +489,58 @@ export async function createUrubutuTransactionAndInitiate(args: {
   }
 
   const data = (res.data ?? {}) as Record<string, unknown>;
+  const transactionStatusRaw =
+    typeof data.transaction_status === "string"
+      ? data.transaction_status
+      : typeof (res as { transaction_status?: unknown }).transaction_status === "string"
+        ? ((res as { transaction_status: string }).transaction_status as string)
+        : "INITIATED";
+  const transactionStatus = transactionStatusRaw.trim().toUpperCase();
+  if (transactionStatus === "FAILED") {
+    const walletChannel = args.channelName === "MOMO" || args.channelName === "AIRTEL_MONEY";
+    const providerError =
+      typeof (res as { error?: unknown }).error === "string" &&
+      (res as { error: string }).error.trim()
+        ? (res as { error: string }).error.trim()
+        : null;
+    const providerMessage =
+      typeof res.message === "string" && res.message.trim() ? res.message.trim() : null;
+    const failureMessage = walletChannel
+      ? walletInitFailureMessageFromProvider({
+          providerError,
+          providerMessage,
+          transactionStatus,
+        })
+      : providerError ||
+        providerMessage ||
+        "Payment transaction failed. Please check your phone number and try again.";
+    logUrubutuPayEvent("initiate", "initiate_failed_status", {
+      transactionId,
+      detail: failureMessage.slice(0, 200),
+      transactionStatus,
+    });
+    await prisma.urubutoPayTransaction
+      .update({
+        where: { id: tx.id },
+        data: { status: "FAILED" },
+      })
+      .catch(() => {});
+    return {
+      ok: false,
+      status: 400,
+      error:
+        walletChannel &&
+        failureMessage ===
+          "Mobile wallet prompt was not sent. Please confirm your wallet number/network and wallet balance, then try again."
+          ? "Payment failed. Please check your wallet balance, then confirm your wallet number/network and try again."
+          : failureMessage,
+      details: res,
+    };
+  }
   logUrubutuPayEvent("initiate", "initiate_ok", {
     transactionId,
     internalRef: ((data.internal_transaction_ref_number as string) ?? "").slice(0, 40),
-    transactionStatus:
-      typeof data.transaction_status === "string" ? data.transaction_status : "INITIATED",
+    transactionStatus,
   });
 
   const cardProcessingUrl =
@@ -340,7 +553,7 @@ export async function createUrubutuTransactionAndInitiate(args: {
     ok: true,
     transactionId,
     internalTransactionRef: (data.internal_transaction_ref_number as string) ?? null,
-    transactionStatus: (data.transaction_status as string) ?? "INITIATED",
+    transactionStatus,
     message: res.message,
     cardProcessingUrl,
     urlValidity,
