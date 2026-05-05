@@ -63,7 +63,7 @@ export default function PaymentSuccessDialog({
 }: PaymentSuccessDialogProps) {
   const [phase, setPhase] = useState<SettlementPhase>("waiting");
   const [detail, setDetail] = useState<string>(
-    "Approve the prompt on your phone. This screen updates when UrubutuPay reports success, cancel, or failure.",
+    "Approve the prompt on your phone. This screen updates when UrubutoPay reports success, cancel, or failure.",
   );
   const [lastStatus, setLastStatus] = useState<string | null>(null);
   /** Elapsed seconds while polling (resets each open/reference). */
@@ -71,6 +71,9 @@ export default function PaymentSuccessDialog({
 
   const notifiedRef = useRef(false);
   const phaseRef = useRef<SettlementPhase>("waiting");
+  /** Parent often passes an inline `onSettled`; keep latest without re-subscribing SSE. */
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -80,9 +83,9 @@ export default function PaymentSuccessDialog({
     (outcome: "success" | "failed" | "timeout" | "error") => {
       if (notifiedRef.current) return;
       notifiedRef.current = true;
-      onSettled?.(outcome);
+      onSettledRef.current?.(outcome);
     },
-    [onSettled]
+    []
   );
 
   useEffect(() => {
@@ -92,7 +95,7 @@ export default function PaymentSuccessDialog({
       setPhase("waiting");
       phaseRef.current = "waiting";
       setDetail(
-        "Approve the prompt on your phone. This screen updates when UrubutuPay reports success, cancel, or failure.",
+        "Approve the prompt on your phone. This screen updates when UrubutoPay reports success, cancel, or failure.",
       );
       setLastStatus(null);
       setElapsedSeconds(0);
@@ -102,7 +105,7 @@ export default function PaymentSuccessDialog({
     setPhase("waiting");
     phaseRef.current = "waiting";
     setDetail(
-      "Approve the prompt on your phone. This screen updates when UrubutuPay reports success, cancel, or failure.",
+      "Approve the prompt on your phone. This screen updates when UrubutoPay reports success, cancel, or failure.",
     );
     setLastStatus(null);
     setElapsedSeconds(0);

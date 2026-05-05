@@ -27,7 +27,7 @@ export default function Dashboard({
   initialArticles = [],
   initialWriters,
 }: DashboardProps) {
-  const { user, setUser, isGuest, logout, hydrated } = useAuth();
+  const { user, setUser, isGuest, logout, hydrated, sessionReady } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [activeView, setActiveView] = useState<DashboardView>("home");
@@ -51,6 +51,11 @@ export default function Dashboard({
       setActiveView(v as DashboardView);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!hydrated || !sessionReady || !isGuest) return;
+    router.replace("/login?returnTo=/dashboard");
+  }, [hydrated, sessionReady, isGuest, router]);
 
   const publishedArticles = useMemo(
     () => articles.filter((a) => a.status === "PUBLISHED"),
@@ -144,7 +149,7 @@ export default function Dashboard({
     router.push("/");
   };
 
-  if (!hydrated) {
+  if (!hydrated || !sessionReady) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="w-10 h-10 border-2 border-zinc-200 border-t-zinc-900 rounded-full animate-spin" />
@@ -152,9 +157,8 @@ export default function Dashboard({
     );
   }
 
-  // Require login: redirect to login with return URL so user comes back to dashboard after signing in
+  // Guest after session check: redirect runs in useEffect (must not call router during render).
   if (isGuest) {
-    router.replace("/login?returnTo=/dashboard");
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="w-10 h-10 border-2 border-zinc-200 border-t-zinc-900 rounded-full animate-spin" />

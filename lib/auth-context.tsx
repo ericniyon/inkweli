@@ -39,6 +39,8 @@ type AuthContextValue = {
   isGuest: boolean;
   logout: () => void;
   hydrated: boolean;
+  /** True after first /api/auth/me attempt post-hydrate (avoids treating OAuth users as guest before session loads). */
+  sessionReady: boolean;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -46,6 +48,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUserState] = useState<User>(GUEST_USER);
   const [hydrated, setHydrated] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
     const stored = getStoredUser();
@@ -56,9 +59,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Sync with NextAuth session (e.g. after sign-in)
   useEffect(() => {
     if (!hydrated) return;
+    let cancelled = false;
     fetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
+        if (cancelled) return;
         if (data?.id && data?.email && data?.name) {
           setUserState(data);
           setStoredUser(data);
@@ -69,7 +74,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setStoredUser(null);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setSessionReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [hydrated]);
 
   const isGuest = user.id === "guest";
@@ -86,7 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, setUser, isGuest, logout, hydrated }}>
+    <AuthContext.Provider value={{ user, setUser, isGuest, logout, hydrated, sessionReady }}>
       {children}
     </AuthContext.Provider>
   );
