@@ -25,6 +25,14 @@ function buildOAuthProviders(): NextAuthOptions["providers"] {
       GoogleProvider({
         clientId: googleId,
         clientSecret: googleSecret,
+        // Some hosts / Google setups expect client_secret at the token endpoint (POST) instead of basic auth.
+        client: { token_endpoint_auth_method: "client_secret_post" },
+        authorization: {
+          params: {
+            // Avoid silent re-auth edge cases; helps multi-account and clearer consent flows.
+            prompt: "select_account",
+          },
+        },
       })
     );
   }
@@ -57,7 +65,10 @@ async function upsertUserFromOAuth(profile: {
   const email = profile.email.trim().toLowerCase();
   const nameCandidate = profile.name.trim() || email.split("@")[0] || "Member";
 
-  let dbUser = await prisma.user.findUnique({ where: { email } });
+  // Match existing rows regardless of stored email casing (Postgres default unique is case-sensitive).
+  let dbUser = await prisma.user.findFirst({
+    where: { email: { equals: email, mode: "insensitive" } },
+  });
   if (!dbUser) {
     return prisma.user.create({
       data: {
@@ -122,6 +133,7 @@ export async function userToPayload(userId: string) {
 }
 
 export const authOptions: NextAuthOptions = {
+  debug: process.env.NODE_ENV === "development",
   providers: [
     ...buildOAuthProviders(),
     CredentialsProvider({
@@ -216,6 +228,7 @@ export const authOptions: NextAuthOptions = {
         if (!emailNorm && fromProfile) emailNorm = fromProfile;
 
         if (!emailNorm) {
+          console.error("[auth] OAuth jwt: missing email on user/profile after Google/Apple callback");
           return token;
         }
 
@@ -234,15 +247,20 @@ export const authOptions: NextAuthOptions = {
             ? u.image.trim()
             : null;
 
-        const dbUser = await upsertUserFromOAuth({
-          email: emailNorm,
-          name: displayName,
-          image,
-        });
+        try {
+          const dbUser = await upsertUserFromOAuth({
+            email: emailNorm,
+            name: displayName,
+            image,
+          });
 
-        token.userId = dbUser.id;
-        token.sub = dbUser.id;
-        token.email = dbUser.email;
+          token.userId = dbUser.id;
+          token.sub = dbUser.id;
+          token.email = dbUser.email;
+        } catch (e) {
+          console.error("[auth] OAuth jwt: failed to upsert user from profile", e);
+          throw e;
+        }
         return token;
       }
 

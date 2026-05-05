@@ -12,6 +12,8 @@ const ERROR_BY_CODE: Record<string, string> = {
     "We couldn't receive your email from Apple or Google. Try signing in with email and password instead, or allow email sharing in your Apple/Google account.",
   OAuthAccountNotVerified:
     "This Google account doesn't have a verified email. Verify your email with Google and try again.",
+  OAuthCallback:
+    "Google sign-in did not complete. Close this tab, open Sign in again, and try once more without refreshing the page after you choose your Google account. If the problem continues, contact support.",
 };
 
 function normalizeInternalPath(input: string | null): string | null {

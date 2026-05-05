@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 
 interface PaymentStatus {
   transactionId?: string;
@@ -18,34 +18,70 @@ interface PaymentStatusTrackerProps {
   onPaymentComplete?: (status: PaymentStatus) => void;
 }
 
-export default function PaymentStatusTracker({ 
-  initialTransactionId, 
-  onPaymentComplete 
+function getStatusMessage(statusUpper: string): string {
+  switch (statusUpper) {
+    case "SUCCESS":
+    case "COMPLETED":
+    case "VALID":
+      return "Payment successful! Your account has been upgraded.";
+    case "FAILED":
+      return "Payment failed. Please try again or contact support.";
+    case "CANCELED":
+      return "Payment was canceled.";
+    case "REVERSED":
+      return "Payment was reversed.";
+    case "PENDING":
+      return "Payment is being processed...";
+    case "PROCESSING":
+      return "Payment is being processed...";
+    default:
+      return "Checking payment status...";
+  }
+}
+
+export default function PaymentStatusTracker({
+  initialTransactionId,
+  onPaymentComplete,
 }: PaymentStatusTrackerProps) {
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>({
     isLoading: !!initialTransactionId,
   });
   const [isVisible, setIsVisible] = useState(!!initialTransactionId);
-  const router = useRouter();
   const searchParams = useSearchParams();
+  const onPaymentCompleteRef = useRef(onPaymentComplete);
+  onPaymentCompleteRef.current = onPaymentComplete;
 
-  const checkPaymentStatusWithEvents = useCallback((transactionId: string) => {
+  useEffect(() => {
+    const transactionId =
+      initialTransactionId ||
+      searchParams.get("reference") ||
+      searchParams.get("transactionId");
+
+    if (!transactionId) return;
+
+    setIsVisible(true);
+    setPaymentStatus({ isLoading: true, transactionId });
+
+    let eventSource: EventSource | null = null;
     try {
-      const eventSource = new EventSource(`/api/payments/events?transactionId=${encodeURIComponent(transactionId)}`);
-      
+      eventSource = new EventSource(
+        `/api/payments/events?transactionId=${encodeURIComponent(transactionId)}`
+      );
+
       eventSource.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
-          
+          const data = JSON.parse(event.data as string);
+
           switch (data.type) {
-            case 'status_update': {
+            case "status_update": {
               const st = typeof data.status === "string" ? data.status : "";
-              const success = ["SUCCESS", "COMPLETED", "VALID"].includes(st);
-              const failed = ["FAILED", "CANCELED", "REVERSED"].includes(st);
+              const u = st.trim().toUpperCase();
+              const success = ["SUCCESS", "COMPLETED", "VALID"].includes(u);
+              const failed = ["FAILED", "CANCELED", "REVERSED"].includes(u);
               setPaymentStatus({
                 transactionId: data.transactionId,
                 status: st,
-                message: getStatusMessage(st),
+                message: getStatusMessage(u),
                 timestamp: data.timestamp,
                 isLoading: !success && !failed,
                 isSuccess: success,
@@ -53,16 +89,19 @@ export default function PaymentStatusTracker({
               });
 
               if (success) {
-                onPaymentComplete?.({ isSuccess: true, transactionId: data.transactionId });
+                onPaymentCompleteRef.current?.({
+                  isSuccess: true,
+                  transactionId: data.transactionId,
+                });
                 setTimeout(() => setIsVisible(false), 3000);
               } else if (failed) {
                 setTimeout(() => setIsVisible(false), 5000);
               }
               break;
             }
-              
-            case 'error':
-              setPaymentStatus(prev => ({
+
+            case "error":
+              setPaymentStatus((prev) => ({
                 ...prev,
                 isLoading: false,
                 isError: true,
@@ -70,87 +109,49 @@ export default function PaymentStatusTracker({
               }));
               setTimeout(() => setIsVisible(false), 5000);
               break;
-              
-            case 'timeout':
-              setPaymentStatus(prev => ({
+
+            case "timeout":
+              setPaymentStatus((prev) => ({
                 ...prev,
                 isLoading: false,
                 message: "Payment status check timed out",
               }));
               setTimeout(() => setIsVisible(false), 3000);
               break;
-              
-            case 'complete':
-              eventSource.close();
+
+            case "complete":
+              eventSource?.close();
               break;
           }
         } catch (error) {
-          console.error('Error parsing event data:', error);
+          console.error("Error parsing event data:", error);
         }
       };
 
-      eventSource.onerror = (error) => {
-        console.error('EventSource error:', error);
-        setPaymentStatus(prev => ({
+      eventSource.onerror = () => {
+        console.error("EventSource error");
+        setPaymentStatus((prev) => ({
           ...prev,
           isLoading: false,
           isError: true,
           message: "Connection to payment server lost",
         }));
-        eventSource.close();
+        eventSource?.close();
         setTimeout(() => setIsVisible(false), 5000);
       };
-
-      return eventSource;
-    } catch (error) {
-      setPaymentStatus(prev => ({
+    } catch {
+      setPaymentStatus((prev) => ({
         ...prev,
         isLoading: false,
         isError: true,
         message: "Unable to connect to payment server",
       }));
-      return null;
     }
-  }, [onPaymentComplete]);
-
-  const getStatusMessage = (status: string) => {
-    switch (status) {
-      case 'SUCCESS':
-      case 'COMPLETED':
-      case 'VALID':
-        return "Payment successful! Your account has been upgraded.";
-      case 'FAILED':
-        return "Payment failed. Please try again or contact support.";
-      case 'CANCELED':
-        return "Payment was canceled.";
-      case 'REVERSED':
-        return "Payment was reversed.";
-      case 'PENDING':
-        return "Payment is being processed...";
-      case 'PROCESSING':
-        return "Payment is being processed...";
-      default:
-        return "Checking payment status...";
-    }
-  };
-
-  useEffect(() => {
-    const transactionId = initialTransactionId || searchParams.get("reference") || searchParams.get("transactionId");
-    
-    if (!transactionId) return;
-
-    setIsVisible(true);
-    setPaymentStatus({ isLoading: true, transactionId });
-
-    // Start real-time status checking with Server-Sent Events
-    const eventSource = checkPaymentStatusWithEvents(transactionId);
 
     return () => {
-      if (eventSource) {
-        eventSource.close();
-      }
+      eventSource?.close();
     };
-  }, [initialTransactionId, searchParams, checkPaymentStatusWithEvents]);
+  }, [initialTransactionId, searchParams]);
 
   if (!isVisible) return null;
 
@@ -183,9 +184,13 @@ export default function PaymentStatusTracker({
           </h3>
           <p className="font-charter text-xs text-slate-600 mb-2">
             {paymentStatus.isLoading && "Processing your payment..."}
-            {paymentStatus.isSuccess && "Payment successful!"}
+            {paymentStatus.isSuccess &&
+              (paymentStatus.message ?? "Payment successful!")}
             {paymentStatus.isError && paymentStatus.message}
-            {!paymentStatus.isLoading && !paymentStatus.isSuccess && !paymentStatus.isError && "Checking payment status..."}
+            {!paymentStatus.isLoading &&
+              !paymentStatus.isSuccess &&
+              !paymentStatus.isError &&
+              (paymentStatus.message ?? "Checking payment status...")}
           </p>
           {paymentStatus.transactionId && (
             <p className="font-charter text-xs text-slate-400">
