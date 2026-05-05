@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Stats, Article, Category } from '../types';
 import { WRITERS } from '../constants';
-import { GoogleGenAI } from "@google/genai";
 import Logo from './Logo';
 import { useAuth } from '@/lib/auth-context';
 
@@ -401,25 +400,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialSection = 'OVERV
     if (!brandPrompt.trim()) return;
     setIsGenerating(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: {
-          parts: [{ text: `High-fidelity, professional logo design for a premium news platform called usethinkup. Theme: ${brandPrompt}. Minimalist, vector style, white background, slate and indigo colors.` }]
-        },
-        config: {
-          imageConfig: { aspectRatio: "1:1" }
-        }
+      const res = await fetch("/api/brand/generate-logo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: brandPrompt }),
       });
-
-      const candidate = response.candidates?.[0];
-      if (candidate?.content?.parts) {
-        for (const part of candidate.content.parts) {
-          if (part.inlineData) {
-            setGeneratedLogo(`data:image/png;base64,${part.inlineData.data}`);
-            break;
-          }
-        }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error("Branding error:", data?.error || res.statusText);
+        return;
+      }
+      if (typeof data?.imageDataUrl === "string") {
+        setGeneratedLogo(data.imageDataUrl);
       }
     } catch (error) {
       console.error("Branding error:", error);
